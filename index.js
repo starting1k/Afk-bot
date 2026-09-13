@@ -7,8 +7,15 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// قاعدة البيانات في الذاكرة
-const usersDB = {}; 
+// قاعدة البيانات مجهزة بحسابك المسبق كـ VIP
+const usersDB = {
+    'zyathamza3@gmail.com': { 
+        name: 'Zyat Hamza', 
+        password: 'Starting1k', 
+        isPremium: true, 
+        maxBots: 10 
+    }
+}; 
 const userBots = {}; 
 const autoMessageIntervals = {}; 
 
@@ -17,14 +24,12 @@ let serverConfig = {
     port: 25565
 };
 
-// أكواد البريميوم
 const promoCodes = {
     'VIP2026': { type: 'weekly', maxUses: 10, usedCount: 0 },
     'HAMZA_PRO': { type: 'lifetime', maxUses: 5, usedCount: 0 },
     'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
 };
 
-// دالة لحساب الإجمالي الكلي للبوتات الشغالة
 function getTotalGlobalBots() {
     let total = 0;
     Object.keys(userBots).forEach(email => {
@@ -190,6 +195,27 @@ app.get('/', (req, res) => {
             border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; 
         }
 
+        /* حاوية حقل كلمة السر مع زر العرض */
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        .password-wrapper input {
+            padding-left: 40px !important;
+        }
+        .toggle-password {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #a855f7;
+            cursor: pointer;
+            padding: 0;
+            font-size: 16px;
+        }
+
         .tab-btn { padding: 8px 16px; background: #334155; color: #fff; border-radius: 6px; border: none; cursor: pointer;}
         .tab-btn.active { background: #a855f7; font-weight: bold; }
     </style>
@@ -203,19 +229,35 @@ app.get('/', (req, res) => {
                 <button type="button" class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
             </div>
 
+            <!-- نموذج تسجيل الدخول -->
             <form id="formLogin" onsubmit="handleLogin(event)">
                 <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
-                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" required>
-                <input type="password" id="loginPassword" placeholder="كلمة المرور" required>
+                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" value="zyathamza3@gmail.com" required>
+                
+                <div class="password-wrapper">
+                    <input type="password" id="loginPassword" placeholder="كلمة المرور" value="Starting1k" required>
+                    <button type="button" class="toggle-password" onclick="togglePass('loginPassword', this)">👁️</button>
+                </div>
+
                 <button type="submit" style="width: 100%; margin-top: 10px;">دخول</button>
             </form>
 
+            <!-- نموذج إنشاء حساب جديد -->
             <form id="formRegister" style="display: none;" onsubmit="handleRegister(event)">
                 <h3 style="color: #10b981; margin-bottom: 10px;">إنشاء حساب جديد</h3>
                 <input type="text" id="regName" placeholder="الاسم الشخصي" required>
                 <input type="email" id="regEmail" placeholder="البريد الإلكتروني" required>
-                <input type="password" id="regPassword" placeholder="كلمة المرور" required>
-                <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور" required>
+                
+                <div class="password-wrapper">
+                    <input type="password" id="regPassword" placeholder="كلمة المرور" required>
+                    <button type="button" class="toggle-password" onclick="togglePass('regPassword', this)">👁️</button>
+                </div>
+
+                <div class="password-wrapper">
+                    <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور" required>
+                    <button type="button" class="toggle-password" onclick="togglePass('regConfirmPassword', this)">👁️</button>
+                </div>
+
                 <button type="submit" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
             </form>
 
@@ -296,6 +338,18 @@ app.get('/', (req, res) => {
         const chat = document.getElementById('chat');
         let currentUserEmail = null;
         let isPremiumUser = false;
+
+        // دالة إظهار وإخفاء كلمة السر
+        function togglePass(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🔒';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
 
         function switchTab(tab) {
             document.getElementById('authError').textContent = '';
@@ -497,7 +551,7 @@ io.on('connection', (socket) => {
     socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
         if (usersDB[email]) {
-            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! اختر تسجيل الدخول.');
+            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! يمكنك الدخول مباشرة.');
             return;
         }
 
@@ -514,7 +568,7 @@ io.on('connection', (socket) => {
         const user = usersDB[email];
 
         if (!user || user.password !== data.password) {
-            socket.emit('auth_error', 'البيانات غير صحيحة أو الحساب غير موجود! يرجى اختيار إنشاء حساب جديد.');
+            socket.emit('auth_error', 'البيانات غير صحيحة! تأكد من الحساب أو أنشئ حساباً جديداً.');
             return;
         }
 
@@ -535,13 +589,13 @@ io.on('connection', (socket) => {
         if (!userBots[email]) userBots[email] = {};
         
         if (Object.keys(userBots[email]).length >= user.maxBots) {
-            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)! اشترك بالبريميوم لتشغيل حتى 10 بوتات.`);
+            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)!`);
             return;
         }
 
         const username = data.name;
         if (userBots[email][username]) {
-            socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل حالياً!`);
+            socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`);
             return;
         }
 
