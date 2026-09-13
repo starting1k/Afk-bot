@@ -339,18 +339,18 @@ app.get('/', (req, res) => {
                 return;
             }
 
-            container.innerHTML = bots.map(bot => `
-                <div class="bot-card">
-                    <button class="btn-kick" onclick="removeBot('\${bot.name}')">إيقاف ❌</button>
-                    <img class="bot-avatar" src="https://mc-heads.net/avatar/\${bot.name}/64" alt="skin">
-                    <div class="bot-info">
-                        <h4>\${bot.name}</h4>
-                        <div class="stat-bar">الحالة: <span style="color: #10b981;">\${bot.status}</span></div>
-                        <div class="stat-bar">❤️ القلوب: <b style="color: #ef4444;">\${bot.health} / 20</b></div>
-                        <div class="stat-bar">🍖 الجوع: <b style="color: #f59e0b;">\${bot.food} / 20</b></div>
-                    </div>
-                </div>
-            `).join('');
+            container.innerHTML = bots.map(function(bot) {
+                return '<div class="bot-card">' +
+                    '<button class="btn-kick" onclick="removeBot(\'' + bot.name + '\')">إيقاف ❌</button>' +
+                    '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64" alt="skin">' +
+                    '<div class="bot-info">' +
+                        '<h4>' + bot.name + '</h4>' +
+                        '<div class="stat-bar">الحالة: <span style="color: #10b981;">' + bot.status + '</span></div>' +
+                        '<div class="stat-bar">❤️ القلوب: <b style="color: #ef4444;">' + bot.health + ' / 20</b></div>' +
+                        '<div class="stat-bar">🍖 الجوع: <b style="color: #f59e0b;">' + bot.food + ' / 20</b></div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
         }
 
         function removeBot(botName) {
@@ -515,7 +515,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // تحسين الإعدادات لتقليل استهلاك الـ RAM والحد من الـ Crash
         const bot = mineflayer.createBot({
             host: data.ip,
             port: parseInt(data.port),
