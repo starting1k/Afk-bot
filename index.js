@@ -1,43 +1,3 @@
-const express = require('express');
-const mineflayer = require('mineflayer');
-const http = require('http');
-const { Server } = require('socket.io');
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
-// قاعدة البيانات مخزنة في الخلفية بأمان (حسابك جاهز للدخول المباشر)
-const usersDB = {
-    'zyathamza3@gmail.com': { 
-        name: 'Hamza', 
-        password: 'Starting1k', 
-        isPremium: true, 
-        maxBots: 10 
-    }
-}; 
-const userBots = {}; 
-const autoMessageIntervals = {}; 
-
-let serverConfig = {
-    host: 'StArTiNG1K.ATeRNoS.Me',
-    port: 25565
-};
-
-const promoCodes = {
-    'VIP2026': { type: 'weekly', maxUses: 10, usedCount: 0 },
-    'HAMZA_PRO': { type: 'lifetime', maxUses: 5, usedCount: 0 },
-    'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
-};
-
-function getTotalGlobalBots() {
-    let total = 0;
-    Object.keys(userBots).forEach(email => {
-        total += Object.keys(userBots[email] || {}).length;
-    });
-    return total;
-}
-
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -195,7 +155,6 @@ app.get('/', (req, res) => {
             border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; 
         }
 
-        /* حاوية كلمة السر والتصميم الخاص بزر العين */
         .password-container {
             position: relative;
             width: 100%;
@@ -231,7 +190,6 @@ app.get('/', (req, res) => {
                 <button type="button" class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
             </div>
 
-            <!-- نموذج تسجيل الدخول -->
             <div id="formLogin">
                 <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
                 <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
@@ -244,7 +202,6 @@ app.get('/', (req, res) => {
                 <button type="button" onclick="submitLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
             </div>
 
-            <!-- نموذج إنشاء حساب جديد -->
             <div id="formRegister" style="display: none;">
                 <h3 style="color: #10b981; margin-bottom: 10px;">إنشاء حساب جديد</h3>
                 <input type="text" id="regName" placeholder="الاسم الشخصي">
@@ -336,14 +293,10 @@ app.get('/', (req, res) => {
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
-        const chat = document.getElementById('chat');
-        let currentUserEmail = null;
-        let isPremiumUser = false;
-
-        // دالة تبديل رؤية كلمة السر (العين)
+        // ✅ تعريف جميع الدوال في النطاق العام قبل استخدام socket
         function togglePassword(inputId, btn) {
             const field = document.getElementById(inputId);
+            if (!field) return;
             if (field.type === 'password') {
                 field.type = 'text';
                 btn.textContent = '🔒';
@@ -367,6 +320,9 @@ app.get('/', (req, res) => {
                 document.getElementById('btnTabRegister').className = 'tab-btn active';
             }
         }
+
+        let currentUserEmail = null;
+        let isPremiumUser = false;
 
         function submitLogin() {
             const email = document.getElementById('loginEmail').value.trim();
@@ -396,26 +352,6 @@ app.get('/', (req, res) => {
             socket.emit('user_register', { name, email, password });
         }
 
-        socket.on('auth_success', (data) => {
-            currentUserEmail = data.email;
-            document.getElementById('authScreen').style.display = 'none';
-            document.getElementById('mainDashboard').style.display = 'flex';
-            document.getElementById('userDisplay').textContent = 'أهلاً بك: ' + data.name + ' (' + data.email + ')';
-            updateBotsCards(data.botsData || []);
-        });
-
-        socket.on('auth_error', (msg) => {
-            document.getElementById('authError').textContent = msg;
-        });
-
-        socket.on('update_global_bots', (count) => {
-            document.getElementById('globalBotsCount').textContent = count;
-        });
-
-        socket.on('update_bots_data', (botsData) => {
-            updateBotsCards(botsData);
-        });
-
         function updateBotsCards(bots) {
             const container = document.getElementById('botsCardsContainer');
             if (!bots || bots.length === 0) {
@@ -425,7 +361,7 @@ app.get('/', (req, res) => {
 
             container.innerHTML = bots.map(function(bot) {
                 return '<div class="bot-card">' +
-                    '<button type="button" class="btn-kick" onclick="removeBot(\'' + bot.name + '\')">إيقاف ❌</button>' +
+                    '<button type="button" class="btn-kick" onclick="removeBot(\\'' + bot.name + '\\')">إيقاف ❌</button>' +
                     '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64" alt="skin">' +
                     '<div class="bot-info">' +
                         '<h4>' + bot.name + '</h4>' +
@@ -440,32 +376,6 @@ app.get('/', (req, res) => {
         function removeBot(botName) {
             socket.emit('remove_bot', { email: currentUserEmail, botName });
         }
-
-        socket.on('log', (msg) => {
-            const div = document.createElement('div');
-            div.textContent = msg;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        });
-
-        socket.on('premium_status', (data) => {
-            isPremiumUser = data.isPremium;
-            const badge = document.getElementById('statusBadge');
-            const autoInput = document.getElementById('autoMsgInput');
-            const autoDelay = document.getElementById('autoMsgDelay');
-            const autoBtn = document.getElementById('btnAutoMsg');
-
-            if (isPremiumUser) {
-                badge.className = 'badge-status badge-premium';
-                badge.textContent = '👑 العضوية الممتازة (متاح حتى 10 بوتات)';
-                autoInput.disabled = false;
-                autoDelay.disabled = false;
-                autoBtn.disabled = false;
-            } else {
-                badge.className = 'badge-status';
-                badge.textContent = 'الحساب المجاني (متاح حتى 2 بوتات)';
-            }
-        });
 
         function addBot() {
             const ip = document.getElementById('ipInput').value;
@@ -502,7 +412,9 @@ app.get('/', (req, res) => {
         }
 
         function triggerParticles() {
-            confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+            if (typeof confetti === 'function') {
+                confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+            }
         }
 
         function openModal() { document.getElementById('codeModal').style.display = 'flex'; }
@@ -518,6 +430,59 @@ app.get('/', (req, res) => {
             }
         }
 
+        // ✅ الآن نُهيّئ socket بعد تعريف الدوال
+        const socket = io();
+        const chat = document.getElementById('chat');
+
+        socket.on('auth_success', (data) => {
+            currentUserEmail = data.email;
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('mainDashboard').style.display = 'flex';
+            document.getElementById('userDisplay').textContent = 'أهلاً بك: ' + data.name + ' (' + data.email + ')';
+            updateBotsCards(data.botsData || []);
+        });
+
+        socket.on('auth_error', (msg) => {
+            document.getElementById('authError').textContent = msg;
+        });
+
+        socket.on('update_global_bots', (count) => {
+            document.getElementById('globalBotsCount').textContent = count;
+        });
+
+        socket.on('update_bots_data', (botsData) => {
+            updateBotsCards(botsData);
+        });
+
+        socket.on('log', (msg) => {
+            const div = document.createElement('div');
+            div.textContent = msg;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        socket.on('premium_status', (data) => {
+            isPremiumUser = data.isPremium;
+            const badge = document.getElementById('statusBadge');
+            const autoInput = document.getElementById('autoMsgInput');
+            const autoDelay = document.getElementById('autoMsgDelay');
+            const autoBtn = document.getElementById('btnAutoMsg');
+
+            if (isPremiumUser) {
+                badge.className = 'badge-status badge-premium';
+                badge.textContent = '👑 العضوية الممتازة (متاح حتى 10 بوتات)';
+                autoInput.disabled = false;
+                autoDelay.disabled = false;
+                autoBtn.disabled = false;
+            } else {
+                badge.className = 'badge-status';
+                badge.textContent = 'الحساب المجاني (متاح حتى 2 بوتات)';
+                autoInput.disabled = true;
+                autoDelay.disabled = true;
+                autoBtn.disabled = true;
+            }
+        });
+
         socket.on('code_response', (res) => {
             const resEl = document.getElementById('modalResult');
             resEl.style.color = res.success ? '#10b981' : '#ef4444';
@@ -531,178 +496,4 @@ app.get('/', (req, res) => {
 </body>
 </html>
     `);
-});
-
-function getFormattedBotsData(email) {
-    if (!userBots[email]) return [];
-    return Object.keys(userBots[email]).map(name => {
-        const b = userBots[email][name].instance;
-        return {
-            name: name,
-            status: b && b.entity ? 'متصل متزامن 🟢' : 'جاري الدخول ⏳',
-            health: b && b.health ? Math.round(b.health) : 20,
-            food: b && b.food ? Math.round(b.food) : 20
-        };
-    });
-}
-
-io.on('connection', (socket) => {
-    socket.emit('update_global_bots', getTotalGlobalBots());
-
-    socket.on('user_register', (data) => {
-        const email = data.email.toLowerCase();
-        if (usersDB[email]) {
-            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! يمكنك الانتقال إلى Login وتطبيقه مباشرة.');
-            return;
-        }
-
-        usersDB[email] = { name: data.name, password: data.password, isPremium: false, maxBots: 2 };
-        userBots[email] = {};
-
-        socket.emit('auth_success', { email, name: data.name, botsData: [] });
-        socket.emit('premium_status', usersDB[email]);
-        socket.emit('log', `[نظام] تم إنشاء الحساب بنجاح! أهلاً بك ${data.name}`);
-    });
-
-    socket.on('user_login', (data) => {
-        const email = data.email.toLowerCase();
-        const user = usersDB[email];
-
-        if (!user || user.password !== data.password) {
-            socket.emit('auth_error', 'البيانات غير صحيحة! تأكد من الحساب أو أنشئ حساباً جديداً.');
-            return;
-        }
-
-        socket.emit('auth_success', {
-            email: email,
-            name: user.name,
-            botsData: getFormattedBotsData(email)
-        });
-        socket.emit('premium_status', user);
-        socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}!`);
-    });
-
-    socket.on('add_bot', (data) => {
-        const email = data.email;
-        if (!email || !usersDB[email]) return;
-
-        const user = usersDB[email];
-        if (!userBots[email]) userBots[email] = {};
-        
-        if (Object.keys(userBots[email]).length >= user.maxBots) {
-            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)!`);
-            return;
-        }
-
-        const username = data.name;
-        if (userBots[email][username]) {
-            socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`);
-            return;
-        }
-
-        const bot = mineflayer.createBot({
-            host: data.ip,
-            port: parseInt(data.port),
-            username: username,
-            checkTimeoutInterval: 60000,
-            physicsEnabled: false
-        });
-
-        userBots[email][username] = { instance: bot };
-
-        bot.on('login', () => {
-            socket.emit('log', `[تم بنجاح] 🟢 تم إظهار وإنشاء البوت (${username}) ودخوله السيرفر بنجاح!`);
-            socket.emit('update_bots_data', getFormattedBotsData(email));
-            io.emit('update_global_bots', getTotalGlobalBots());
-        });
-
-        bot.on('health', () => {
-            socket.emit('update_bots_data', getFormattedBotsData(email));
-        });
-
-        bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
-        bot.on('error', (err) => io.emit('log', `[خطأ - ${username}] ${err.message}`));
-        bot.on('end', () => {
-            io.emit('log', `[نظام] انقطع اتصال البوت (${username}).`);
-            if (userBots[email]) {
-                delete userBots[email][username];
-                socket.emit('update_bots_data', getFormattedBotsData(email));
-                io.emit('update_global_bots', getTotalGlobalBots());
-            }
-        });
-
-        socket.emit('update_bots_data', getFormattedBotsData(email));
-        io.emit('update_global_bots', getTotalGlobalBots());
-    });
-
-    socket.on('remove_bot', (data) => {
-        const { email, botName } = data;
-        if (userBots[email] && userBots[email][botName]) {
-            userBots[email][botName].instance.quit();
-            delete userBots[email][botName];
-            socket.emit('update_bots_data', getFormattedBotsData(email));
-            io.emit('update_global_bots', getTotalGlobalBots());
-            socket.emit('log', `[نظام] تم إيقاف البوت (${botName}) بنجاح.`);
-        }
-    });
-
-    socket.on('command', (data) => {
-        const email = data.email;
-        const cmd = data.cmd;
-
-        if (userBots[email]) {
-            Object.keys(userBots[email]).forEach(botName => {
-                if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
-            });
-            io.emit('log', `> [جميع البوتات]: ${cmd}`);
-        }
-    });
-
-    socket.on('set_auto_message', (data) => {
-        const email = data.email;
-        if (!email || !usersDB[email] || !usersDB[email].isPremium) {
-            socket.emit('log', '[تنبيه] ميزة النشر التلقائي مخصصة للبريميوم فقط!');
-            return;
-        }
-
-        if (autoMessageIntervals[email]) clearInterval(autoMessageIntervals[email]);
-
-        if (data.msg && data.msg.trim() !== '') {
-            const delayMs = Math.max(20, parseInt(data.delay) || 20) * 1000;
-            autoMessageIntervals[email] = setInterval(() => {
-                if (userBots[email]) {
-                    Object.keys(userBots[email]).forEach(botName => {
-                        if (userBots[email][botName].instance) userBots[email][botName].instance.chat(data.msg);
-                    });
-                }
-            }, delayMs);
-            io.emit('log', `[البريميوم] تم تفعيل النشر التلقائي كل ${delayMs / 1000} ثانية.`);
-        } else {
-            io.emit('log', `[البريميوم] تم إيقاف النشر التلقائي.`);
-        }
-    });
-
-    socket.on('redeem_code', (data) => {
-        const email = data.email;
-        const code = data.code;
-        const item = promoCodes[code];
-
-        if (!item || (item.maxUses !== -1 && item.usedCount >= item.maxUses)) {
-            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو انتهى عدد استخداماته!' });
-            return;
-        }
-
-        item.usedCount++;
-        usersDB[email].isPremium = true;
-        usersDB[email].maxBots = 10;
-
-        socket.emit('premium_status', usersDB[email]);
-        socket.emit('code_response', { success: true, message: 'تم التفعيل بنجاح! متاح لك 10 بوتات والنشر التلقائي 👑' });
-        io.emit('log', `[تحديث] الحساب (${email}) تم ترقيته إلى VIP!`);
-    });
-});
-
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
 });
