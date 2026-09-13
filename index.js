@@ -1,173 +1,221 @@
-const mineflayer = require('mineflayer');
 const express = require('express');
+const mineflayer = require('mineflayer');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const PORT = process.env.PORT || 3000;
-
-const BOT_PASSWORD = process.env.BOT_PASSWORD || '222222';
-const botOptions = {
-    host: process.env.SERVER_IP || 'starting1k.aternos.me',
-    port: parseInt(process.env.SERVER_PORT) || 25565,
-    auth: 'offline',
-    username: process.env.BOT_NAME || 'Afk_bot'
-};
 
 let bot = null;
-let botStatus = 'منفصل';
-let chatLogs = [];
+let botConfig = {
+    host: 'StArTiNG1K.ATeRNoS.Me',
+    port: 25565,
+    username: 'AFK_bot'
+};
+
+// نظام إدارة الأكواد
+const promoCodes = {
+    'starting22': {
+        type: 'weekly',
+        durationDays: 7,
+        maxUses: 3,
+        usedCount: 0,
+        description: 'بريميوم لمدة أسبوع (صالح لأول 3 أشخاص)'
+    },
+    's': {
+        type: 'lifetime',
+        durationDays: -1, // مدى الحياة
+        maxUses: 1,
+        usedCount: 0,
+        description: 'بريميوم مدى الحياة (خاص بك فقط)'
+    }
+};
 
 app.get('/', (req, res) => {
     res.send(`
-        <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>STARTING SMP | Control Panel</title>
-            <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
-            <style>
-                * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tajawal', sans-serif; }
-                body { background: #0f172a; color: #f8fafc; padding: 20px; display: flex; justify-content: center; }
-                .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 20px; }
-                .header { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-                .title { font-size: 1.5rem; font-weight: bold; color: #38bdf8; }
-                .status-badge { padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
-                .online { background: #059669; color: #ecfdf5; }
-                .offline { background: #dc2626; color: #fef2f2; }
-                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
-                .card { background: #1e293b; padding: 15px; border-radius: 12px; border: 1px solid #334155; }
-                .card h3 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 5px; }
-                .card p { font-size: 1.2rem; font-weight: bold; }
-                .chat-box { background: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-                .logs { background: #0f172a; height: 300px; border-radius: 8px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; color: #cbd5e1; border: 1px solid #334155; }
-                .input-group { display: flex; gap: 10px; }
-                input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; }
-                button { padding: 10px 20px; border-radius: 6px; border: none; background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; transition: 0.2s; }
-                button:hover { background: #0369a1; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="title">⚡ STARTING SMP - لوحة التحكم</div>
-                    <div id="status" class="status-badge offline">جاري التحميل...</div>
-                </div>
-                <div class="grid">
-                    <div class="card"><h3>اسم البوت</h3><p id="bot-name">${botOptions.username}</p></div>
-                    <div class="card"><h3>السيرفر</h3><p>${botOptions.host}</p></div>
-                    <div class="card"><h3>نظام الحماية</h3><p>AuthMe (222222)</p></div>
-                </div>
-                <div class="chat-box">
-                    <h3>الدردشة المباشرة والأوامر</h3>
-                    <div id="logs" class="logs"></div>
-                    <div class="input-group">
-                        <input type="text" id="cmdInput" placeholder="اكتب أمراً أو رسالة للسيرفر..." />
-                        <button onclick="sendCmd()">إرسال</button>
-                    </div>
-                </div>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STARTING SMP - لوحة التحكم الاحترافية</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
+        body { background-color: #0f172a; color: #f8fafc; padding: 15px; }
+        .container { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        .header { background: #1e293b; padding: 15px; border-radius: 12px; border: 1px solid #334155; text-align: center; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+        .card { background: #1e293b; padding: 12px; border-radius: 10px; border: 1px solid #334155; }
+        .card label { font-size: 12px; color: #94a3b8; display: block; margin-bottom: 5px; }
+        .card input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; }
+        .chat-box { background: #1e293b; border-radius: 12px; border: 1px solid #334155; height: 320px; display: flex; flex-direction: column; }
+        .messages { flex: 1; padding: 12px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #38bdf8; }
+        .input-area { display: flex; padding: 10px; gap: 8px; border-top: 1px solid #334155; }
+        .input-area input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; }
+        button { padding: 10px 16px; border-radius: 6px; border: none; background: #2563eb; color: #fff; font-weight: bold; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .btn-gift { background: #10b981; font-size: 12px; padding: 10px; }
+        .btn-gift:hover { background: #059669; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        .modal-content input { width: 100%; padding: 10px; margin: 15px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>STARTING SMP - لوحة التحكم الاحترافية</h2>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <label>رابط / IP السيرفر</label>
+                <input type="text" id="ipInput" value="${botConfig.host}">
             </div>
-            <script src="/socket.io/socket.io.js"></script>
-            <script>
-                const socket = io();
-                const logsDiv = document.getElementById('logs');
-                const statusDiv = document.getElementById('status');
+            <div class="card">
+                <label>البورت (Port)</label>
+                <input type="number" id="portInput" value="${botConfig.port}">
+            </div>
+            <div class="card">
+                <label>اسم البوت</label>
+                <input type="text" id="botNameInput" value="${botConfig.username}">
+            </div>
+        </div>
 
-                socket.on('status', (data) => {
-                    statusDiv.innerText = data.text;
-                    statusDiv.className = 'status-badge ' + (data.online ? 'online' : 'offline');
-                });
+        <button onclick="updateServerConfig()" style="background: #8b5cf6;">حفظ وتوصيل البوت</button>
 
-                socket.on('log', (msg) => {
-                    const p = document.createElement('div');
-                    p.innerText = msg;
-                    logsDiv.appendChild(p);
-                    logsDiv.scrollTop = logsDiv.scrollHeight;
-                });
+        <div class="chat-box">
+            <div class="messages" id="chat"></div>
+            <div class="input-area">
+                <input type="text" id="msgInput" placeholder="أدخل أمراً أو رسالة للتمرير..." onkeydown="if(event.key==='Enter') sendMsg()">
+                <button onclick="sendMsg()">إرسال</button>
+                <button class="btn-gift" onclick="openModal()">🎁 كود البريميوم</button>
+            </div>
+        </div>
+    </div>
 
-                function sendCmd() {
-                    const input = document.getElementById('cmdInput');
-                    if (input.value.trim() !== '') {
-                        socket.emit('sendCommand', input.value);
-                        input.value = '';
-                    }
-                }
-            </script>
-        </body>
-        </html>
+    <div class="modal" id="codeModal">
+        <div class="modal-content">
+            <h3>تفعيل كود البريميوم</h3>
+            <input type="text" id="codeField" placeholder="أدخل الكود هنا...">
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button onclick="redeemCode()" style="background: #10b981;">تفعيل</button>
+                <button onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
+            </div>
+            <p id="modalResult" style="margin-top: 10px; font-size: 13px;"></p>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const chat = document.getElementById('chat');
+
+        socket.on('log', (msg) => {
+            const div = document.createElement('div');
+            div.textContent = msg;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        function sendMsg() {
+            const input = document.getElementById('msgInput');
+            if (input.value.trim()) {
+                socket.emit('command', input.value);
+                input.value = '';
+            }
+        }
+
+        function updateServerConfig() {
+            const ip = document.getElementById('ipInput').value;
+            const port = document.getElementById('portInput').value;
+            const name = document.getElementById('botNameInput').value;
+            socket.emit('update_config', { ip, port, name });
+        }
+
+        function openModal() { document.getElementById('codeModal').style.display = 'flex'; }
+        function closeModal() { 
+            document.getElementById('codeModal').style.display = 'none'; 
+            document.getElementById('modalResult').textContent = '';
+        }
+
+        function redeemCode() {
+            const code = document.getElementById('codeField').value.trim();
+            if (code) {
+                socket.emit('redeem_code', code);
+            }
+        }
+
+        socket.on('code_response', (res) => {
+            const resEl = document.getElementById('modalResult');
+            resEl.style.color = res.success ? '#10b981' : '#ef4444';
+            resEl.textContent = res.message;
+        });
+    </script>
+</body>
+</html>
     `);
 });
 
-function logAndEmit(msg) {
-    console.log(msg);
-    chatLogs.push(msg);
-    if (chatLogs.length > 100) chatLogs.shift();
-    io.emit('log', msg);
-}
-
-function updateStatus(text, isOnline) {
-    botStatus = text;
-    io.emit('status', { text: text, online: isOnline });
-}
-
-function createBot() {
-    updateStatus('جاري الاتصال...', false);
-    logAndEmit('[نظام] محاولة الاتصال بالسيرفر...');
-
-    bot = mineflayer.createBot(botOptions);
-
-    bot.on('spawn', () => {
-        updateStatus('متصل 24/7', true);
-        logAndEmit('[نظام] دخل البوت السيرفر بنجاح!');
+function initBot() {
+    if (bot) {
+        bot.end();
+    }
+    bot = mineflayer.createBot({
+        host: botConfig.host,
+        port: parseInt(botConfig.port),
+        username: botConfig.username
     });
 
-    bot.on('message', (jsonMsg) => {
-        const message = jsonMsg.toString();
-        logAndEmit(message);
-
-        const lowerMsg = message.toLowerCase();
-        if (lowerMsg.includes('/register')) {
-            logAndEmit('[حماية] تم اكتشاف طلب التسجيل، جاري التسجيل...');
-            bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
-        } else if (lowerMsg.includes('/login')) {
-            logAndEmit('[حماية] تم اكتشاف طلب الدخول، جاري تسجيل الدخول...');
-            bot.chat(`/login ${BOT_PASSWORD}`);
-        }
-    });
-
-    setInterval(() => {
-        if (bot) {
-            try { bot.swingArm('left'); } catch (e) {}
-        }
-    }, 300000);
-
-    bot.on('end', () => {
-        updateStatus('منفصل', false);
-        logAndEmit('[نظام] انقطع الاتصال، إعادة المحاولة بعد 5 ثوانٍ...');
-        setTimeout(createBot, 5000);
-    });
-
-    bot.on('error', (err) => {
-        logAndEmit(`[خطأ] ${err.message}`);
-    });
+    bot.on('login', () => io.emit('log', `[نظام] تم اتصال البوت ${botConfig.username} بالسيرفر بنجاح!`));
+    bot.on('chat', (username, message) => io.emit('log', `<${username}> ${message}`));
+    bot.on('error', (err) => io.emit('log', `[خطأ] ${err.message}`));
+    bot.on('end', () => io.emit('log', '[نظام] تم انقطاع الاتصال بالسيرفر.'));
 }
 
 io.on('connection', (socket) => {
-    socket.emit('status', { text: botStatus, online: botStatus.includes('متصل') });
-    chatLogs.forEach(log => socket.emit('log', log));
+    socket.emit('log', '[نظام] متصل بللوحة التحكم.');
 
-    socket.on('sendCommand', (cmd) => {
+    socket.on('command', (cmd) => {
         if (bot) {
             bot.chat(cmd);
-            logAndEmit(`[أمر أرسلته]: ${cmd}`);
+            io.emit('log', `> ${cmd}`);
+        }
+    });
+
+    socket.on('update_config', (data) => {
+        botConfig.host = data.ip;
+        botConfig.port = data.port;
+        botConfig.username = data.name;
+        io.emit('log', `[تحديث] جاري إعادة التوصيل بالبيانات الجديدة...`);
+        initBot();
+    });
+
+    socket.on('redeem_code', (code) => {
+        const item = promoCodes[code];
+        if (!item) {
+            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو منتهي الصلاحية!' });
+            return;
+        }
+
+        if (item.maxUses !== -1 && item.usedCount >= item.maxUses) {
+            socket.emit('code_response', { success: false, message: 'تم استنفاد العدد المتاح لتقسيم هذا الكود!' });
+            return;
+        }
+
+        item.usedCount++;
+        if (item.type === 'lifetime') {
+            socket.emit('code_response', { success: true, message: 'تهانينا! حصلت على بريميوم مدى الحياة 👑' });
+        } else {
+            socket.emit('code_response', { success: true, message: `تم التفعيل! حصلت على بريميوم لمدة 7 أيام. المتبقي لاستخدام الكود: ${item.maxUses - item.usedCount}` });
         }
     });
 });
 
+initBot();
+
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    createBot();
 });
