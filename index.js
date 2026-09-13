@@ -7,10 +7,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// قاعدة البيانات مجهزة بحسابك المسبق كـ VIP
+// قاعدة البيانات مخزنة في الخلفية بأمان (حسابك جاهز للدخول المباشر)
 const usersDB = {
     'zyathamza3@gmail.com': { 
-        name: 'Zyat Hamza', 
+        name: 'Hamza', 
         password: 'Starting1k', 
         isPremium: true, 
         maxBots: 10 
@@ -45,7 +45,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STARTING SMP - Advanced Bot Dashboard</title>
+    <title>STARTING SMP - Control Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
@@ -195,25 +195,27 @@ app.get('/', (req, res) => {
             border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; 
         }
 
-        /* حاوية حقل كلمة السر مع زر العرض */
-        .password-wrapper {
+        /* حاوية كلمة السر والتصميم الخاص بزر العين */
+        .password-container {
             position: relative;
             width: 100%;
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
         }
-        .password-wrapper input {
-            padding-left: 40px !important;
+        .password-container input {
+            margin: 0 !important;
+            padding-left: 45px !important;
         }
-        .toggle-password {
+        .eye-btn {
             position: absolute;
             left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #a855f7;
+            background: transparent !important;
+            border: none !important;
+            font-size: 18px;
             cursor: pointer;
-            padding: 0;
-            font-size: 16px;
+            padding: 5px !important;
+            user-select: none;
         }
 
         .tab-btn { padding: 8px 16px; background: #334155; color: #fff; border-radius: 6px; border: none; cursor: pointer;}
@@ -230,36 +232,36 @@ app.get('/', (req, res) => {
             </div>
 
             <!-- نموذج تسجيل الدخول -->
-            <form id="formLogin" onsubmit="handleLogin(event)">
+            <div id="formLogin">
                 <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
-                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" value="zyathamza3@gmail.com" required>
+                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
                 
-                <div class="password-wrapper">
-                    <input type="password" id="loginPassword" placeholder="كلمة المرور" value="Starting1k" required>
-                    <button type="button" class="toggle-password" onclick="togglePass('loginPassword', this)">👁️</button>
+                <div class="password-container">
+                    <input type="password" id="loginPassword" placeholder="كلمة المرور">
+                    <button type="button" class="eye-btn" onclick="togglePassword('loginPassword', this)">👁️</button>
                 </div>
 
-                <button type="submit" style="width: 100%; margin-top: 10px;">دخول</button>
-            </form>
+                <button type="button" onclick="submitLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
+            </div>
 
             <!-- نموذج إنشاء حساب جديد -->
-            <form id="formRegister" style="display: none;" onsubmit="handleRegister(event)">
+            <div id="formRegister" style="display: none;">
                 <h3 style="color: #10b981; margin-bottom: 10px;">إنشاء حساب جديد</h3>
-                <input type="text" id="regName" placeholder="الاسم الشخصي" required>
-                <input type="email" id="regEmail" placeholder="البريد الإلكتروني" required>
+                <input type="text" id="regName" placeholder="الاسم الشخصي">
+                <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
                 
-                <div class="password-wrapper">
-                    <input type="password" id="regPassword" placeholder="كلمة المرور" required>
-                    <button type="button" class="toggle-password" onclick="togglePass('regPassword', this)">👁️</button>
+                <div class="password-container">
+                    <input type="password" id="regPassword" placeholder="كلمة المرور">
+                    <button type="button" class="eye-btn" onclick="togglePassword('regPassword', this)">👁️</button>
                 </div>
 
-                <div class="password-wrapper">
-                    <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور" required>
-                    <button type="button" class="toggle-password" onclick="togglePass('regConfirmPassword', this)">👁️</button>
+                <div class="password-container">
+                    <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور">
+                    <button type="button" class="eye-btn" onclick="togglePassword('regConfirmPassword', this)">👁️</button>
                 </div>
 
-                <button type="submit" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
-            </form>
+                <button type="button" onclick="submitRegister()" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
+            </div>
 
             <p id="authError" style="color: #ef4444; font-size: 12px; margin-top: 10px;"></p>
         </div>
@@ -339,14 +341,14 @@ app.get('/', (req, res) => {
         let currentUserEmail = null;
         let isPremiumUser = false;
 
-        // دالة إظهار وإخفاء كلمة السر
-        function togglePass(inputId, btn) {
-            const input = document.getElementById(inputId);
-            if (input.type === 'password') {
-                input.type = 'text';
+        // دالة تبديل رؤية كلمة السر (العين)
+        function togglePassword(inputId, btn) {
+            const field = document.getElementById(inputId);
+            if (field.type === 'password') {
+                field.type = 'text';
                 btn.textContent = '🔒';
             } else {
-                input.type = 'password';
+                field.type = 'password';
                 btn.textContent = '👁️';
             }
         }
@@ -366,19 +368,18 @@ app.get('/', (req, res) => {
             }
         }
 
-        function handleLogin(e) {
-            if(e) e.preventDefault();
+        function submitLogin() {
             const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value.trim();
+            
             if (!email || !password) {
-                document.getElementById('authError').textContent = 'جميع الحقول مطلوبة!';
+                document.getElementById('authError').textContent = 'يرجى أدخال البريد وكلمة السر!';
                 return;
             }
             socket.emit('user_login', { email, password });
         }
 
-        function handleRegister(e) {
-            if(e) e.preventDefault();
+        function submitRegister() {
             const name = document.getElementById('regName').value.trim();
             const email = document.getElementById('regEmail').value.trim();
             const password = document.getElementById('regPassword').value.trim();
@@ -551,7 +552,7 @@ io.on('connection', (socket) => {
     socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
         if (usersDB[email]) {
-            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! يمكنك الدخول مباشرة.');
+            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! يمكنك الانتقال إلى Login وتطبيقه مباشرة.');
             return;
         }
 
