@@ -7,16 +7,15 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// قاعدة بيانات بسيطة في الذاكرة للحسابات والبوتات
-const usersDB = {}; // { email: { password, isPremium, maxBots: 2 } }
-const userBots = {}; // { email: { botName: botInstance } }
+// قاعدة بيانات الحسابات والبوتات في الذاكرة
+const usersDB = {}; // { email: { name, password, isPremium, maxBots: 2 } }
+const userBots = {}; // { email: { botName: { botInstance, config } } }
+const autoMessageIntervals = {}; 
 
 let serverConfig = {
     host: 'StArTiNG1K.ATeRNoS.Me',
     port: 25565
 };
-
-let autoMessageIntervals = {}; // { email: interval }
 
 const promoCodes = {
     'starting22': { type: 'weekly', maxUses: 3, usedCount: 0 },
@@ -134,7 +133,6 @@ app.get('/', (req, res) => {
             box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
         }
 
-        /* Modal Auth & Ads */
         .modal, .ad-popup, .auth-modal { 
             display: flex; 
             position: fixed; 
@@ -158,12 +156,36 @@ app.get('/', (req, res) => {
         .modal-content input { 
             width: 100%; 
             padding: 12px; 
-            margin: 8px 0; 
+            margin: 6px 0; 
             border-radius: 8px; 
             border: 1px solid #475569; 
             background: #0f172a; 
             color: #fff; 
             text-align: center; 
+        }
+
+        .tab-btn {
+            padding: 8px 16px;
+            background: #334155;
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+        }
+        .tab-btn.active {
+            background: #a855f7;
+            font-weight: bold;
+        }
+
+        .bot-tag {
+            display: inline-block;
+            background: #0f172a;
+            border: 1px solid #10b981;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin: 3px;
+            color: #10b981;
         }
 
         .ad-content {
@@ -174,14 +196,30 @@ app.get('/', (req, res) => {
 </head>
 <body>
 
-    <!-- شاشة تسجيل الدخول الأولى الإلزامية -->
+    <!-- شاشة تسجيل الدخول والإنشاء الأولى -->
     <div class="auth-modal" id="authScreen">
         <div class="modal-content">
-            <h2 style="color: #a855f7; margin-bottom: 10px;">🔑 تسجيل الدخول</h2>
-            <p style="font-size: 13px; color: #94a3b8; margin-bottom: 15px;">قم بتسجيل الدخول بإيميلك للوصول إلى لوحة التحكم</p>
-            <input type="email" id="authEmail" placeholder="البريد الإلكتروني (Email)">
-            <input type="password" id="authPassword" placeholder="كلمة المرور (Password)">
-            <button onclick="loginUser()" style="width: 100%; margin-top: 10px; background: linear-gradient(90deg, #3b82f6, #a855f7);">دخول / تسجيل جديد</button>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                <button class="tab-btn active" id="btnTabLogin" onclick="switchTab('login')">Login (دخول)</button>
+                <button class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
+            </div>
+
+            <div id="formLogin">
+                <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
+                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
+                <input type="password" id="loginPassword" placeholder="كلمة المرور">
+                <button onclick="handleLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
+            </div>
+
+            <div id="formRegister" style="display: none;">
+                <h3 style="color: #10b981; margin-bottom: 10px;">إنشاء حساب جديد</h3>
+                <input type="text" id="regName" placeholder="الاسم الشخصي">
+                <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
+                <input type="password" id="regPassword" placeholder="كلمة المرور">
+                <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور">
+                <button onclick="handleRegister()" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
+            </div>
+
             <p id="authError" style="color: #ef4444; font-size: 12px; margin-top: 10px;"></p>
         </div>
     </div>
@@ -192,6 +230,7 @@ app.get('/', (req, res) => {
             <h1>⚡ STARTING SMP - MULTI-BOT CONTROL ⚡</h1>
             <div id="statusBadge" class="badge-status">الحساب المجاني (حتى 2 بوتات)</div>
             <div id="userDisplay" style="font-size: 12px; color: #a855f7; margin-top: 5px;"></div>
+            <div id="activeBotsContainer" style="margin-top: 10px;"></div>
         </div>
 
         <div class="grid">
@@ -214,10 +253,12 @@ app.get('/', (req, res) => {
         <div class="card" style="border-color: #f59e0b;">
             <span class="lock-icon">🔒 Premium</span>
             <label style="color: #f59e0b;">إرسال رسالة تلقائية مكررة (Auto-Message)</label>
-            <div style="display: flex; gap: 10px; margin-top: 8px;">
-                <input type="text" id="autoMsgInput" value="ادخل سيرفرنا الدسكورد: https://discord.gg/sBpn9hcF9" disabled>
-                <input type="number" id="autoMsgDelay" placeholder="الثواني" value="10" style="width: 90px;" disabled>
-                <button onclick="saveAutoMsg()" style="background: #f59e0b; color: #000;" id="btnAutoMsg" disabled>تفعيل</button>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                <input type="text" id="autoMsgInput" value="ادخل سيرفرنا الدسكورد: https://discord.gg/sBpn9hcF9" placeholder="اكتب الرسالة التي تريدها..." disabled>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="autoMsgDelay" placeholder="الثواني (20 على الأقل)" value="20" disabled>
+                    <button onclick="saveAutoMsg()" style="background: #f59e0b; color: #000; flex: 1;" id="btnAutoMsg" disabled>تفعيل النشر</button>
+                </div>
             </div>
         </div>
 
@@ -235,7 +276,7 @@ app.get('/', (req, res) => {
     <div class="modal" id="codeModal" style="display: none;">
         <div class="modal-content">
             <h3 style="color: #f59e0b;">👑 تفعيل كود البريميوم 👑</h3>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">احصل على 10 بوتات والرسائل التلقائية!</p>
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">احصل على 10 بوتات والرسائل التلقائية بالكامل!</p>
             <input type="text" id="codeField" placeholder="أدخل الكود هنا...">
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                 <button onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
@@ -245,14 +286,14 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
-    <!-- نافذة الإعلانات المنبثقة للبريميوم -->
+    <!-- نافذة الإعلانات -->
     <div class="ad-popup" id="adPopup" style="display: none;">
         <div class="modal-content ad-content">
             <h2 style="color: #f59e0b; font-size: 22px;">🔥 ترقية إلى Premium! 🔥</h2>
             <p style="margin: 15px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
                 ✨ تشغيل حتى 10 بوتات معاً<br>
-                💬 نشر رابط الديسكورد وتكراره تلقائياً<br>
-                🚀 أولوية استضافة عالية
+                💬 رسائل تلقائية مخصصة من اختيارك<br>
+                🚀 وقت استجابة سريع بدون انقطاع
             </p>
             <button onclick="openModalFromAd()" class="btn-gift" style="width: 100%; font-size: 16px; padding: 12px;">تفعيل الكود 🎁</button>
             <button onclick="closeAd()" style="background: transparent; border: 1px solid #64748b; margin-top: 8px; width: 100%; color: #94a3b8;">إغلاق</button>
@@ -266,32 +307,78 @@ app.get('/', (req, res) => {
         let currentUserEmail = null;
         let isPremiumUser = false;
 
-        function loginUser() {
-            const email = document.getElementById('authEmail').value.trim();
-            const password = document.getElementById('authPassword').value.trim();
+        function switchTab(tab) {
+            document.getElementById('authError').textContent = '';
+            if (tab === 'login') {
+                document.getElementById('formLogin').style.display = 'block';
+                document.getElementById('formRegister').style.display = 'none';
+                document.getElementById('btnTabLogin').className = 'tab-btn active';
+                document.getElementById('btnTabRegister').className = 'tab-btn';
+            } else {
+                document.getElementById('formLogin').style.display = 'none';
+                document.getElementById('formRegister').style.display = 'block';
+                document.getElementById('btnTabLogin').className = 'tab-btn';
+                document.getElementById('btnTabRegister').className = 'tab-btn active';
+            }
+        }
 
+        function handleLogin() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
             if (!email || !password) {
-                document.getElementById('authError').textContent = 'يرجى إدخال البريد الإلكتروني وكلمة المرور!';
+                document.getElementById('authError').textContent = 'جميع الحقول مطلوبة!';
                 return;
             }
-
             socket.emit('user_login', { email, password });
         }
 
-        socket.on('login_success', (data) => {
+        function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const password = document.getElementById('regPassword').value.trim();
+            const confirm = document.getElementById('regConfirmPassword').value.trim();
+
+            if (!name || !email || !password || !confirm) {
+                document.getElementById('authError').textContent = 'يرجى ملء جميع الحقول!';
+                return;
+            }
+            if (password !== confirm) {
+                document.getElementById('authError').textContent = 'كلمات المرور غير متطابقة!';
+                return;
+            }
+            socket.emit('user_register', { name, email, password });
+        }
+
+        socket.on('auth_success', (data) => {
             currentUserEmail = data.email;
             document.getElementById('authScreen').style.display = 'none';
             document.getElementById('mainDashboard').style.display = 'flex';
-            document.getElementById('userDisplay').textContent = 'الحساب: ' + currentUserEmail;
+            document.getElementById('userDisplay').textContent = 'أهلاً بك: ' + data.name + ' (' + data.email + ')';
             
-            // إظهار الإعلانات التلقائية
+            // جلب البوتات النشطة حالياً
+            updateActiveBotsList(data.activeBots || []);
+
             setInterval(showAd, 45000);
             setTimeout(showAd, 8000);
         });
 
-        socket.on('login_error', (msg) => {
+        socket.on('auth_error', (msg) => {
             document.getElementById('authError').textContent = msg;
         });
+
+        socket.on('update_bots_list', (botsList) => {
+            updateActiveBotsList(botsList);
+        });
+
+        function updateActiveBotsList(bots) {
+            const container = document.getElementById('activeBotsContainer');
+            if (bots.length === 0) {
+                container.innerHTML = '<span style="font-size: 11px; color: #64748b;">لا توجد بوتات نشطة حالياً</span>';
+                return;
+            }
+            container.innerHTML = '<span style="font-size: 11px; color: #94a3b8;">البوتات المتصلة الآن: </span>' + 
+                bots.map(b => '<span class="bot-tag">🟢 ' + b + '</span>').join('');
+        }
 
         socket.on('log', (msg) => {
             const div = document.createElement('div');
@@ -344,6 +431,12 @@ app.get('/', (req, res) => {
         function saveAutoMsg() {
             const msg = document.getElementById('autoMsgInput').value;
             const delay = document.getElementById('autoMsgDelay').value;
+
+            if (parseInt(delay) < 20) {
+                alert('الحد الأقصى للسرعة هو 20 ثانية لحماية السيرفر من السبام!');
+                return;
+            }
+
             socket.emit('set_auto_message', { email: currentUserEmail, msg, delay });
         }
 
@@ -391,29 +484,56 @@ app.get('/', (req, res) => {
     `);
 });
 
-// إدارة تسجيل دخول المستخدمين
+// التعامل مع اتصالات المستخدمين
 io.on('connection', (socket) => {
 
-    socket.on('user_login', (data) => {
+    socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
-        const password = data.password;
-
-        if (!usersDB[email]) {
-            // إنشاء حساب جديد تلقائياً إذا لم يكن موجوداً
-            usersDB[email] = {
-                password: password,
-                isPremium: false,
-                maxBots: 2
-            };
-            userBots[email] = {};
-        } else if (usersDB[email].password !== password) {
-            socket.emit('login_error', 'كلمة المرور غير صحيحة لهذا البريد!');
+        if (usersDB[email]) {
+            socket.emit('auth_error', 'هذا البريد الإلكتروني مسجل بالفعل! اختر دخول.');
             return;
         }
 
-        socket.emit('login_success', { email });
+        usersDB[email] = {
+            name: data.name,
+            password: data.password,
+            isPremium: false,
+            maxBots: 2
+        };
+        userBots[email] = {};
+
+        socket.emit('auth_success', {
+            email: email,
+            name: data.name,
+            activeBots: []
+        });
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('log', `[نظام] أهلاً بك! تم تسجيل الدخول بواسطة: ${email}`);
+        socket.emit('log', `[نظام] أهلاً بك يا ${data.name}! تم إنشاء حسابك بنجاح.`);
+    });
+
+    socket.on('user_login', (data) => {
+        const email = data.email.toLowerCase();
+        const user = usersDB[email];
+
+        if (!user) {
+            socket.emit('auth_error', 'الحساب غير موجود! يرجى إنشاء حساب جديد (Register).');
+            return;
+        }
+
+        if (user.password !== data.password) {
+            socket.emit('auth_error', 'كلمة المرور غير صحيحة!');
+            return;
+        }
+
+        const activeBotNames = userBots[email] ? Object.keys(userBots[email]) : [];
+
+        socket.emit('auth_success', {
+            email: email,
+            name: user.name,
+            activeBots: activeBotNames
+        });
+        socket.emit('premium_status', user);
+        socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}! تم استرجاع بوتاتك النشطة تلقائياً.`);
     });
 
     socket.on('add_bot', (data) => {
@@ -421,17 +541,18 @@ io.on('connection', (socket) => {
         if (!email || !usersDB[email]) return;
 
         const user = usersDB[email];
-        const userActiveBots = userBots[email] || {};
-        const currentBotCount = Object.keys(userActiveBots).length;
+        if (!userBots[email]) userBots[email] = {};
+        
+        const currentBotCount = Object.keys(userBots[email]).length;
 
         if (currentBotCount >= user.maxBots) {
-            socket.emit('log', `[تنبيه] الحساب المجاني يسمح بـ ${user.maxBots} بوتات فقط! اشترك بالبريميوم لزيادة العدد إلى 10.`);
+            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)! اشترك بالبريميوم لفتح 10 بوتات.`);
             return;
         }
 
         const username = data.name;
-        if (userActiveBots[username]) {
-            socket.emit('log', `[تنبيه] هناك بوت يعمل بهذا الاسم بالفعل!`);
+        if (userBots[email][username]) {
+            socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل حالياً!`);
             return;
         }
 
@@ -441,15 +562,21 @@ io.on('connection', (socket) => {
             username: username
         });
 
-        bot.on('login', () => io.emit('log', `[نظام - ${email}] البوت (${username}) متصل الآن بالسيرفر!`));
+        bot.on('login', () => {
+            io.emit('log', `[نظام - ${username}] تم الدخول بنجاح للسيرفر!`);
+            socket.emit('update_bots_list', Object.keys(userBots[email]));
+        });
+
         bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
         bot.on('error', (err) => io.emit('log', `[خطأ - ${username}] ${err.message}`));
         bot.on('end', () => {
             io.emit('log', `[نظام] انقطع اتصال البوت (${username}).`);
-            if (userBots[email]) delete userBots[email][username];
+            if (userBots[email]) {
+                delete userBots[email][username];
+                socket.emit('update_bots_list', Object.keys(userBots[email]));
+            }
         });
 
-        if (!userBots[email]) userBots[email] = {};
         userBots[email][username] = bot;
     });
 
@@ -461,21 +588,21 @@ io.on('connection', (socket) => {
             Object.keys(userBots[email]).forEach(botName => {
                 if (userBots[email][botName]) userBots[email][botName].chat(cmd);
             });
-            io.emit('log', `> [أمَر جميع بوتات ${email}]: ${cmd}`);
+            io.emit('log', `> [جميع البوتات]: ${cmd}`);
         }
     });
 
     socket.on('set_auto_message', (data) => {
         const email = data.email;
         if (!email || !usersDB[email] || !usersDB[email].isPremium) {
-            socket.emit('log', '[تنبيه] هذه الميزة خاصة بالبريميوم فقط!');
+            socket.emit('log', '[تنبيه] ميزة النشر التلقائي مخصصة للبريميوم فقط!');
             return;
         }
 
         if (autoMessageIntervals[email]) clearInterval(autoMessageIntervals[email]);
 
         if (data.msg && data.msg.trim() !== '') {
-            const delayMs = Math.max(3, parseInt(data.delay) || 10) * 1000;
+            const delayMs = Math.max(20, parseInt(data.delay) || 20) * 1000;
             autoMessageIntervals[email] = setInterval(() => {
                 if (userBots[email]) {
                     Object.keys(userBots[email]).forEach(botName => {
@@ -483,7 +610,7 @@ io.on('connection', (socket) => {
                     });
                 }
             }, delayMs);
-            io.emit('log', `[البريميوم] تم تفعيل النشر التلقائي من كافة البوتات كل ${delayMs / 1000} ثوانٍ.`);
+            io.emit('log', `[البريميوم] تم تفعيل النشر التلقائي كل ${delayMs / 1000} ثانية.`);
         } else {
             io.emit('log', `[البريميوم] تم إيقاف النشر التلقائي.`);
         }
@@ -495,7 +622,7 @@ io.on('connection', (socket) => {
         const item = promoCodes[code];
 
         if (!item || (item.maxUses !== -1 && item.usedCount >= item.maxUses)) {
-            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو مستعمل بالكامل!' });
+            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو منتهي!' });
             return;
         }
 
@@ -504,8 +631,8 @@ io.on('connection', (socket) => {
         usersDB[email].maxBots = 10;
 
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('code_response', { success: true, message: 'مبروك! تم التفعيل! حصلت على 10 بوتات و الميزات الكاملة! 👑✨' });
-        io.emit('log', `[مبروك] الحساب ${email} أصبح بريميوم الآن!`);
+        socket.emit('code_response', { success: true, message: 'تم التفعيل! فتح 10 بوتات والنشر التلقائي المخصص 👑' });
+        io.emit('log', `[مبروك] الحساب (${email}) تمت ترقيته للبريميوم!`);
     });
 });
 
