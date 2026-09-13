@@ -17,7 +17,7 @@ let serverConfig = {
     port: 25565
 };
 
-// أكواد بريميوم جديييدة وشغالة
+// أكواد البريميوم
 const promoCodes = {
     'VIP2026': { type: 'weekly', maxUses: 10, usedCount: 0 },
     'HAMZA_PRO': { type: 'lifetime', maxUses: 5, usedCount: 0 },
@@ -91,7 +91,6 @@ app.get('/', (req, res) => {
             outline: none;
         }
 
-        /* شبكة عرض البوتات النشطة */
         .bots-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -176,7 +175,6 @@ app.get('/', (req, res) => {
 </head>
 <body>
 
-    <!-- نافذة التسجيل -->
     <div class="auth-modal" id="authScreen">
         <div class="modal-content">
             <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
@@ -204,7 +202,6 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
-    <!-- لوحة التحكم الرئيسية -->
     <div class="container" id="mainDashboard" style="display: none;">
         <div class="header">
             <h1>⚡ STARTING SMP - CONTROL CENTER Pro ⚡</h1>
@@ -229,7 +226,6 @@ app.get('/', (req, res) => {
 
         <button onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
 
-        <!-- قسم عرض قائمة البوتات وتفاصيلها -->
         <div>
             <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً وتفاصيلها:</h3>
             <div class="bots-grid" id="botsCardsContainer">
@@ -237,7 +233,6 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <!-- قسم النشر التلقائي -->
         <div class="card" style="border-color: #f59e0b;">
             <label style="color: #f59e0b;">👑 إرسال رسالة تلقائية مكررة (Auto-Message)</label>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
@@ -259,7 +254,6 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
-    <!-- نافذة الكود -->
     <div class="modal" id="codeModal" style="display: none;">
         <div class="modal-content">
             <h3 style="color: #f59e0b;">👑 تفعيل كود البريميوم 👑</h3>
@@ -334,7 +328,6 @@ app.get('/', (req, res) => {
             document.getElementById('authError').textContent = msg;
         });
 
-        // تحديث كروت البوتات لحظياً
         socket.on('update_bots_data', (botsData) => {
             updateBotsCards(botsData);
         });
@@ -456,7 +449,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// تجهيز قائمة بيانات البوتات لإرسالها للواجهة
 function getFormattedBotsData(email) {
     if (!userBots[email]) return [];
     return Object.keys(userBots[email]).map(name => {
@@ -523,21 +515,22 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // تحسين الإعدادات لتقليل استهلاك الـ RAM والحد من الـ Crash
         const bot = mineflayer.createBot({
             host: data.ip,
             port: parseInt(data.port),
-            username: username
+            username: username,
+            checkTimeoutInterval: 60000,
+            physicsEnabled: false
         });
 
         userBots[email][username] = { instance: bot };
 
         bot.on('login', () => {
-            // رسالة النجاح التي طلبتها
             socket.emit('log', `[تم بنجاح] 🟢 تم إظهار وإنشاء البوت (${username}) ودخوله السيرفر بنجاح!`);
             socket.emit('update_bots_data', getFormattedBotsData(email));
         });
 
-        // تحديث الصحة والجوع مباشرة عند التغير
         bot.on('health', () => {
             socket.emit('update_bots_data', getFormattedBotsData(email));
         });
@@ -622,6 +615,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
