@@ -24,7 +24,7 @@ const promoCodes = {
     'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
 };
 
-// دالة لحساب الإجمالي الكلي للبوتات الشغالة في الموقع كله
+// دالة لحساب الإجمالي الكلي للبوتات الشغالة
 function getTotalGlobalBots() {
     let total = 0;
     Object.keys(userBots).forEach(email => {
@@ -203,21 +203,21 @@ app.get('/', (req, res) => {
                 <button type="button" class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
             </div>
 
-            <div id="formLogin">
+            <form id="formLogin" onsubmit="handleLogin(event)">
                 <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
-                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
-                <input type="password" id="loginPassword" placeholder="كلمة المرور">
-                <button type="button" onclick="handleLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
-            </div>
+                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" required>
+                <input type="password" id="loginPassword" placeholder="كلمة المرور" required>
+                <button type="submit" style="width: 100%; margin-top: 10px;">دخول</button>
+            </form>
 
-            <div id="formRegister" style="display: none;">
+            <form id="formRegister" style="display: none;" onsubmit="handleRegister(event)">
                 <h3 style="color: #10b981; margin-bottom: 10px;">إنشاء حساب جديد</h3>
-                <input type="text" id="regName" placeholder="الاسم الشخصي">
-                <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
-                <input type="password" id="regPassword" placeholder="كلمة المرور">
-                <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور">
-                <button type="button" onclick="handleRegister()" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
-            </div>
+                <input type="text" id="regName" placeholder="الاسم الشخصي" required>
+                <input type="email" id="regEmail" placeholder="البريد الإلكتروني" required>
+                <input type="password" id="regPassword" placeholder="كلمة المرور" required>
+                <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور" required>
+                <button type="submit" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
+            </form>
 
             <p id="authError" style="color: #ef4444; font-size: 12px; margin-top: 10px;"></p>
         </div>
@@ -312,7 +312,8 @@ app.get('/', (req, res) => {
             }
         }
 
-        function handleLogin() {
+        function handleLogin(e) {
+            if(e) e.preventDefault();
             const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value.trim();
             if (!email || !password) {
@@ -322,7 +323,8 @@ app.get('/', (req, res) => {
             socket.emit('user_login', { email, password });
         }
 
-        function handleRegister() {
+        function handleRegister(e) {
+            if(e) e.preventDefault();
             const name = document.getElementById('regName').value.trim();
             const email = document.getElementById('regEmail').value.trim();
             const password = document.getElementById('regPassword').value.trim();
@@ -490,7 +492,6 @@ function getFormattedBotsData(email) {
 }
 
 io.on('connection', (socket) => {
-    // إرسال عدد البوتات الكلي فور الاتصال
     socket.emit('update_global_bots', getTotalGlobalBots());
 
     socket.on('user_register', (data) => {
@@ -513,7 +514,7 @@ io.on('connection', (socket) => {
         const user = usersDB[email];
 
         if (!user || user.password !== data.password) {
-            socket.emit('auth_error', 'البيانات غير صحيحة!');
+            socket.emit('auth_error', 'البيانات غير صحيحة أو الحساب غير موجود! يرجى اختيار إنشاء حساب جديد.');
             return;
         }
 
