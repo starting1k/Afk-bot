@@ -7,15 +7,19 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// قاعدة البيانات
+// ============================================
+// 👤 قاعدة بيانات المستخدمين
+// ============================================
 const usersDB = {
     'zyathamza3@gmail.com': { 
         name: 'Hamza', 
         password: 'Starting1k', 
         isPremium: true, 
-        maxBots: 10 
+        maxBots: 10,
+        premiumUntil: null  // null = للأبد
     }
 }; 
+
 const userBots = {}; 
 const autoMessageIntervals = {}; 
 
@@ -24,10 +28,34 @@ let serverConfig = {
     port: 25565
 };
 
+// ============================================
+// 🎁 أكواد البريميوم - قناة Starting
+// ============================================
 const promoCodes = {
-    'VIP2026': { type: 'weekly', maxUses: 10, usedCount: 0 },
-    'HAMZA_PRO': { type: 'lifetime', maxUses: 5, usedCount: 0 },
-    'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
+    // 👑 مدى الحياة - شخصين فقط
+    'STARTING_LIFE': { 
+        type: 'lifetime', 
+        days: 0,           // 0 = مدى الحياة
+        maxUses: 2, 
+        usedCount: 0,
+        usedBy: []
+    },
+    // ⏳ 5 أيام - 10 أشخاص
+    'STARTING_5DAYS': { 
+        type: 'temporary', 
+        days: 5,
+        maxUses: 10, 
+        usedCount: 0,
+        usedBy: []
+    },
+    // 👑 مدى الحياة - شخص واحد (احتياطي)
+    'STARTING_KING': { 
+        type: 'lifetime', 
+        days: 0,
+        maxUses: 1, 
+        usedCount: 0,
+        usedBy: []
+    }
 };
 
 function getTotalGlobalBots() {
@@ -36,6 +64,13 @@ function getTotalGlobalBots() {
         total += Object.keys(userBots[email] || {}).length;
     });
     return total;
+}
+
+// ✅ فحص هل البريميوم لا زال ساري؟
+function isPremiumActive(user) {
+    if (!user.isPremium) return false;
+    if (user.premiumUntil === null || user.premiumUntil === undefined) return true; // للأبد
+    return Date.now() < user.premiumUntil;
 }
 
 app.get('/', (req, res) => {
@@ -84,6 +119,7 @@ app.get('/', (req, res) => {
     </style>
 </head>
 <body>
+
     <div class="auth-modal" id="authScreen">
         <div class="modal-content">
             <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
@@ -124,29 +160,44 @@ app.get('/', (req, res) => {
             <br>
             <div id="statusBadge" class="badge-status">الحساب المجاني (حتى 2 بوتات)</div>
             <div id="userDisplay" style="font-size: 12px; color: #a855f7; margin-top: 5px;"></div>
+            <div id="premiumTimer" style="font-size: 12px; color: #f59e0b; margin-top: 5px; font-weight: bold;"></div>
         </div>
+
         <div class="grid">
-            <div class="card"><label>رابط / IP السيرفر</label><input type="text" id="ipInput" value="${serverConfig.host}"></div>
-            <div class="card"><label>البورت (Port)</label><input type="number" id="portInput" value="${serverConfig.port}"></div>
-            <div class="card"><label>اسم البوت الجديد</label><input type="text" id="botNameInput" placeholder="أدخل اسم البوت"></div>
+            <div class="card">
+                <label>رابط / IP السيرفر</label>
+                <input type="text" id="ipInput" value="${serverConfig.host}">
+            </div>
+            <div class="card">
+                <label>البورت (Port)</label>
+                <input type="number" id="portInput" value="${serverConfig.port}">
+            </div>
+            <div class="card">
+                <label>اسم البوت الجديد</label>
+                <input type="text" id="botNameInput" placeholder="أدخل اسم البوت" value="sub_starting22">
+            </div>
         </div>
+
         <button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
+
         <div>
             <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً:</h3>
             <div class="bots-grid" id="botsCardsContainer">
                 <p style="color: #64748b; font-size: 13px;">لا توجد بوتات تعمل حالياً.</p>
             </div>
         </div>
+
         <div class="card" style="border-color: #f59e0b;">
             <label style="color: #f59e0b;">👑 إرسال رسالة تلقائية (Auto-Message)</label>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-                <input type="text" id="autoMsgInput" value="ادخل سيرفرنا الدسكورد: https://discord.gg/sBpn9hcF9" disabled>
+                <input type="text" id="autoMsgInput" value="انضم لقناتنا: Starting | https://discord.gg/sBpn9hcF9" disabled>
                 <div style="display: flex; gap: 10px;">
                     <input type="number" id="autoMsgDelay" placeholder="الثواني (20+)" value="20" disabled>
                     <button type="button" onclick="saveAutoMsg()" style="background: #f59e0b; color: #000; flex: 1;" id="btnAutoMsg" disabled>تفعيل النشر</button>
                 </div>
             </div>
         </div>
+
         <div class="chat-box">
             <div class="messages" id="chat"></div>
             <div class="input-area">
@@ -160,8 +211,8 @@ app.get('/', (req, res) => {
     <div class="modal" id="codeModal" style="display: none;">
         <div class="modal-content">
             <h3 style="color: #f59e0b;">👑 تفعيل كود البريميوم 👑</h3>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">أدخل الكود للحصول على 10 بوتات!</p>
-            <input type="text" id="codeField" placeholder="مثال: HAMZA_PRO">
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">تابع قناة <b style="color:#a855f7;">Starting</b> للحصول على الأكواد!</p>
+            <input type="text" id="codeField" placeholder="أدخل الكود هنا">
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                 <button type="button" onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
                 <button type="button" onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
@@ -196,6 +247,7 @@ app.get('/', (req, res) => {
 
         let currentUserEmail = null;
         let isPremiumUser = false;
+        let premiumTimerInterval = null;
 
         function submitLogin() {
             const email = document.getElementById('loginEmail').value.trim();
@@ -238,10 +290,9 @@ app.get('/', (req, res) => {
         function addBot() {
             const ip = document.getElementById('ipInput').value;
             const port = document.getElementById('portInput').value;
-            const name = document.getElementById('botNameInput').value.trim();
-            if (!name) { alert('الرجاء كتابة اسم البوت!'); return; }
+            let name = document.getElementById('botNameInput').value.trim();
+            if (!name) { name = 'sub_starting22'; }
             socket.emit('add_bot', { email: currentUserEmail, ip, port, name });
-            document.getElementById('botNameInput').value = '';
         }
 
         function sendMsg() {
@@ -299,14 +350,41 @@ app.get('/', (req, res) => {
             const autoInput = document.getElementById('autoMsgInput');
             const autoDelay = document.getElementById('autoMsgDelay');
             const autoBtn = document.getElementById('btnAutoMsg');
+            const timerEl = document.getElementById('premiumTimer');
+            
+            if (premiumTimerInterval) { clearInterval(premiumTimerInterval); premiumTimerInterval = null; }
+            timerEl.textContent = '';
+            
             if (isPremiumUser) {
                 badge.className = 'badge-status badge-premium';
                 badge.textContent = '👑 العضوية الممتازة (حتى 10 بوتات)';
                 autoInput.disabled = false; autoDelay.disabled = false; autoBtn.disabled = false;
+                
+                // ⏳ إذا كان مؤقت، عرض العد التنازلي
+                if (data.premiumUntil) {
+                    const updateTimer = () => {
+                        const remaining = data.premiumUntil - Date.now();
+                        if (remaining <= 0) {
+                            timerEl.textContent = '⚠️ انتهى وقت البريميوم!';
+                            clearInterval(premiumTimerInterval);
+                            return;
+                        }
+                        const d = Math.floor(remaining / (1000 * 60 * 60 * 24));
+                        const h = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const m = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+                        const s = Math.floor((remaining % (1000 * 60)) / 1000);
+                        timerEl.textContent = '⏳ متبقي: ' + d + 'ي ' + h + 'س ' + m + 'د ' + s + 'ث';
+                    };
+                    updateTimer();
+                    premiumTimerInterval = setInterval(updateTimer, 1000);
+                } else {
+                    timerEl.textContent = '♾️ بريميوم مدى الحياة';
+                }
             } else {
                 badge.className = 'badge-status';
                 badge.textContent = 'الحساب المجاني (حتى 2 بوتات)';
                 autoInput.disabled = true; autoDelay.disabled = true; autoBtn.disabled = true;
+                timerEl.textContent = '';
             }
         });
 
@@ -314,7 +392,7 @@ app.get('/', (req, res) => {
             const resEl = document.getElementById('modalResult');
             resEl.style.color = res.success ? '#10b981' : '#ef4444';
             resEl.textContent = res.message;
-            if(res.success) { triggerParticles(); setTimeout(closeModal, 2500); }
+            if(res.success) { triggerParticles(); setTimeout(closeModal, 3000); }
         });
     </script>
 </body>
@@ -343,7 +421,13 @@ io.on('connection', (socket) => {
             socket.emit('auth_error', 'هذا البريد مسجل بالفعل!');
             return;
         }
-        usersDB[email] = { name: data.name, password: data.password, isPremium: false, maxBots: 2 };
+        usersDB[email] = { 
+            name: data.name, 
+            password: data.password, 
+            isPremium: false, 
+            maxBots: 2,
+            premiumUntil: null
+        };
         userBots[email] = {};
         socket.emit('auth_success', { email, name: data.name, botsData: [] });
         socket.emit('premium_status', usersDB[email]);
@@ -357,6 +441,14 @@ io.on('connection', (socket) => {
             socket.emit('auth_error', 'البيانات غير صحيحة!');
             return;
         }
+        
+        // ✅ فحص إذا انتهى البريميوم المؤقت
+        if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
+            user.isPremium = false;
+            user.maxBots = 2;
+            user.premiumUntil = null;
+        }
+        
         socket.emit('auth_success', { email: email, name: user.name, botsData: getFormattedBotsData(email) });
         socket.emit('premium_status', user);
         socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}!`);
@@ -366,6 +458,15 @@ io.on('connection', (socket) => {
         const email = data.email;
         if (!email || !usersDB[email]) return;
         const user = usersDB[email];
+        
+        // ✅ فحص انتهاء البريميوم قبل الإضافة
+        if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
+            user.isPremium = false;
+            user.maxBots = 2;
+            user.premiumUntil = null;
+            socket.emit('premium_status', user);
+        }
+        
         if (!userBots[email]) userBots[email] = {};
         if (Object.keys(userBots[email]).length >= user.maxBots) {
             socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)!`);
@@ -431,7 +532,7 @@ io.on('connection', (socket) => {
 
     socket.on('set_auto_message', (data) => {
         const email = data.email;
-        if (!email || !usersDB[email] || !usersDB[email].isPremium) {
+        if (!email || !usersDB[email] || !isPremiumActive(usersDB[email])) {
             socket.emit('log', '[تنبيه] ميزة النشر التلقائي للبريميوم فقط!');
             return;
         }
@@ -451,24 +552,69 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ============================================
+    // 🎁 تفعيل كود البريميوم
+    // ============================================
     socket.on('redeem_code', (data) => {
         const email = data.email;
-        const code = data.code;
-        const item = promoCodes[code];
-        if (!item || (item.maxUses !== -1 && item.usedCount >= item.maxUses)) {
-            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو انتهى!' });
+        const code = data.code.trim().toUpperCase();
+
+        if (!usersDB[email]) {
+            socket.emit('code_response', { success: false, message: 'يجب تسجيل الدخول أولاً!' });
             return;
         }
+
+        const item = promoCodes[code];
+
+        if (!item) {
+            socket.emit('code_response', { success: false, message: '❌ الكود غير صحيح!' });
+            return;
+        }
+
+        if (item.usedBy.includes(email)) {
+            socket.emit('code_response', { success: false, message: '⚠️ لقد استخدمت هذا الكود من قبل!' });
+            return;
+        }
+
+        if (item.usedCount >= item.maxUses) {
+            socket.emit('code_response', { success: false, message: '❌ انتهى عدد استخدامات هذا الكود!' });
+            return;
+        }
+
+        // ✅ تفعيل الكود
         item.usedCount++;
+        item.usedBy.push(email);
         usersDB[email].isPremium = true;
         usersDB[email].maxBots = 10;
+
+        let durationText = '';
+        if (item.type === 'lifetime') {
+            usersDB[email].premiumUntil = null; // للأبد
+            durationText = '♾️ مدى الحياة';
+        } else if (item.type === 'temporary') {
+            usersDB[email].premiumUntil = Date.now() + (item.days * 24 * 60 * 60 * 1000);
+            durationText = `⏳ ${item.days} أيام`;
+        }
+
+        const remaining = item.maxUses - item.usedCount;
+        let msg = `✅ تم التفعيل بنجاح! (${durationText}) متاح لك 10 بوتات + نشر تلقائي 👑`;
+        if (remaining > 0) {
+            msg += ` | متبقي ${remaining} استخدام من نفس الكود`;
+        } else {
+            msg += ` | 🎉 آخر من استخدم هذا الكود!`;
+        }
+
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('code_response', { success: true, message: 'تم التفعيل بنجاح! 10 بوتات + نشر تلقائي 👑' });
-        io.emit('log', `[تحديث] الحساب (${email}) تم ترقيته إلى VIP!`);
+        socket.emit('code_response', { success: true, message: msg });
+        io.emit('log', `[تحديث] 🎉 الحساب (${email}) تم ترقيته إلى VIP عبر قناة Starting! (${durationText})`);
     });
 });
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log('🎁 Premium codes ready:');
+    console.log('   👑 STARTING_LIFE   → مدى الحياة (2 أشخاص)');
+    console.log('   ⏳ STARTING_5DAYS  → 5 أيام (10 أشخاص)');
+    console.log('   👑 STARTING_KING   → مدى الحياة (شخص واحد)');
 });
