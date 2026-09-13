@@ -7,9 +7,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// قاعدة بيانات الحسابات والبوتات في الذاكرة
-const usersDB = {}; // { email: { name, password, isPremium, maxBots: 2 } }
-const userBots = {}; // { email: { botName: { botInstance, config } } }
+// قاعدة البيانات في الذاكرة
+const usersDB = {}; 
+const userBots = {}; 
 const autoMessageIntervals = {}; 
 
 let serverConfig = {
@@ -17,9 +17,11 @@ let serverConfig = {
     port: 25565
 };
 
+// أكواد بريميوم جديييدة وشغالة
 const promoCodes = {
-    'starting22': { type: 'weekly', maxUses: 3, usedCount: 0 },
-    's': { type: 'lifetime', maxUses: 1, usedCount: 0 }
+    'VIP2026': { type: 'weekly', maxUses: 10, usedCount: 0 },
+    'HAMZA_PRO': { type: 'lifetime', maxUses: 5, usedCount: 0 },
+    'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
 };
 
 app.get('/', (req, res) => {
@@ -29,7 +31,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STARTING SMP - CONTROL CENTER Pro</title>
+    <title>STARTING SMP - Advanced Bot Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
@@ -41,7 +43,7 @@ app.get('/', (req, res) => {
             min-height: 100vh;
             background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #090d16 70%);
         }
-        .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .container { max-width: 950px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
         
         .header { 
             background: rgba(30, 41, 59, 0.7); 
@@ -50,7 +52,6 @@ app.get('/', (req, res) => {
             border-radius: 16px; 
             border: 1px solid rgba(139, 92, 246, 0.3); 
             text-align: center;
-            box-shadow: 0 0 25px rgba(139, 92, 246, 0.15);
         }
         .header h1 { 
             font-size: 26px; 
@@ -70,7 +71,7 @@ app.get('/', (req, res) => {
             background: #334155;
             color: #94a3b8;
         }
-        .badge-premium { background: linear-gradient(90deg, #eab308, #f97316); color: #000; box-shadow: 0 0 10px rgba(234, 179, 8, 0.5); }
+        .badge-premium { background: linear-gradient(90deg, #eab308, #f97316); color: #000; }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
         .card { 
@@ -78,7 +79,6 @@ app.get('/', (req, res) => {
             padding: 14px; 
             border-radius: 12px; 
             border: 1px solid #334155; 
-            position: relative;
         }
         .card label { font-size: 12px; color: #a855f7; display: block; margin-bottom: 6px; font-weight: bold; }
         .card input { 
@@ -89,31 +89,60 @@ app.get('/', (req, res) => {
             background: #090d16; 
             color: #fff; 
             outline: none;
-            transition: 0.3s;
         }
 
-        .lock-icon {
+        /* شبكة عرض البوتات النشطة */
+        .bots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .bot-card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 2px solid #10b981;
+            border-radius: 14px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        .bot-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            background: #090d16;
+            border: 1px solid #334155;
+            image-rendering: pixelated;
+        }
+        .bot-info { flex: 1; }
+        .bot-info h4 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; }
+        .stat-bar { font-size: 13px; margin: 3px 0; }
+        .btn-kick {
+            background: #ef4444;
+            color: white;
+            padding: 6px 10px;
+            font-size: 11px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
             position: absolute;
             top: 10px;
             left: 10px;
-            font-size: 12px;
-            background: #ef4444;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
         }
 
         .chat-box { 
             background: rgba(15, 23, 42, 0.9); 
             border-radius: 16px; 
             border: 1px solid rgba(59, 130, 246, 0.3); 
-            height: 350px; 
+            height: 300px; 
             display: flex; 
             flex-direction: column; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .messages { flex: 1; padding: 15px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #38bdf8; }
-        .input-area { display: flex; padding: 12px; gap: 10px; border-top: 1px solid #334155; background: #0f172a; border-radius: 0 0 16px 16px; }
+        .input-area { display: flex; padding: 12px; gap: 10px; border-top: 1px solid #334155; background: #0f172a; }
         .input-area input { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #090d16; color: #fff; }
 
         button { 
@@ -124,79 +153,30 @@ app.get('/', (req, res) => {
             color: #fff; 
             font-weight: bold; 
             cursor: pointer; 
-            transition: transform 0.2s;
         }
-        button:hover { transform: translateY(-2px); }
+        .btn-gift { background: linear-gradient(90deg, #f59e0b, #ef4444); }
 
-        .btn-gift { 
-            background: linear-gradient(90deg, #f59e0b, #ef4444); 
-            box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
-        }
-
-        .modal, .ad-popup, .auth-modal { 
-            display: flex; 
-            position: fixed; 
-            top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.85); 
-            backdrop-filter: blur(8px);
-            justify-content: center; 
-            align-items: center; 
-            z-index: 9999;
+        .modal, .auth-modal { 
+            display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+            justify-content: center; align-items: center; z-index: 9999;
         }
         .modal-content { 
-            background: #1e293b; 
-            padding: 25px; 
-            border-radius: 16px; 
-            width: 90%; 
-            max-width: 420px; 
-            text-align: center; 
-            border: 2px solid #a855f7; 
-            box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
+            background: #1e293b; padding: 25px; border-radius: 16px; width: 90%; max-width: 420px; 
+            text-align: center; border: 2px solid #a855f7; 
         }
         .modal-content input { 
-            width: 100%; 
-            padding: 12px; 
-            margin: 6px 0; 
-            border-radius: 8px; 
-            border: 1px solid #475569; 
-            background: #0f172a; 
-            color: #fff; 
-            text-align: center; 
+            width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; 
+            border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; 
         }
 
-        .tab-btn {
-            padding: 8px 16px;
-            background: #334155;
-            color: #fff;
-            border-radius: 6px;
-            cursor: pointer;
-            border: none;
-        }
-        .tab-btn.active {
-            background: #a855f7;
-            font-weight: bold;
-        }
-
-        .bot-tag {
-            display: inline-block;
-            background: #0f172a;
-            border: 1px solid #10b981;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            margin: 3px;
-            color: #10b981;
-        }
-
-        .ad-content {
-            background: linear-gradient(135deg, #1e1b4b, #311042);
-            border: 2px solid #f59e0b;
-        }
+        .tab-btn { padding: 8px 16px; background: #334155; color: #fff; border-radius: 6px; border: none; cursor: pointer;}
+        .tab-btn.active { background: #a855f7; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <!-- شاشة تسجيل الدخول والإنشاء الأولى -->
+    <!-- نافذة التسجيل -->
     <div class="auth-modal" id="authScreen">
         <div class="modal-content">
             <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
@@ -224,13 +204,12 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
-    <!-- الواجهة الرئيسية -->
+    <!-- لوحة التحكم الرئيسية -->
     <div class="container" id="mainDashboard" style="display: none;">
         <div class="header">
-            <h1>⚡ STARTING SMP - MULTI-BOT CONTROL ⚡</h1>
+            <h1>⚡ STARTING SMP - CONTROL CENTER Pro ⚡</h1>
             <div id="statusBadge" class="badge-status">الحساب المجاني (حتى 2 بوتات)</div>
             <div id="userDisplay" style="font-size: 12px; color: #a855f7; margin-top: 5px;"></div>
-            <div id="activeBotsContainer" style="margin-top: 10px;"></div>
         </div>
 
         <div class="grid">
@@ -250,9 +229,17 @@ app.get('/', (req, res) => {
 
         <button onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
 
+        <!-- قسم عرض قائمة البوتات وتفاصيلها -->
+        <div>
+            <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً وتفاصيلها:</h3>
+            <div class="bots-grid" id="botsCardsContainer">
+                <p style="color: #64748b; font-size: 13px;">لا توجد بوتات تعمل حالياً.</p>
+            </div>
+        </div>
+
+        <!-- قسم النشر التلقائي -->
         <div class="card" style="border-color: #f59e0b;">
-            <span class="lock-icon">🔒 Premium</span>
-            <label style="color: #f59e0b;">إرسال رسالة تلقائية مكررة (Auto-Message)</label>
+            <label style="color: #f59e0b;">👑 إرسال رسالة تلقائية مكررة (Auto-Message)</label>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
                 <input type="text" id="autoMsgInput" value="ادخل سيرفرنا الدسكورد: https://discord.gg/sBpn9hcF9" placeholder="اكتب الرسالة التي تريدها..." disabled>
                 <div style="display: flex; gap: 10px;">
@@ -265,38 +252,24 @@ app.get('/', (req, res) => {
         <div class="chat-box">
             <div class="messages" id="chat"></div>
             <div class="input-area">
-                <input type="text" id="msgInput" placeholder="أدخل أمراً أو رسالة لتمريرها للجميع..." onkeydown="if(event.key==='Enter') sendMsg()">
+                <input type="text" id="msgInput" placeholder="أدخل أمراً أو رسالة لجميع البوتات..." onkeydown="if(event.key==='Enter') sendMsg()">
                 <button onclick="sendMsg()">إرسال</button>
                 <button class="btn-gift" onclick="openModal()">👑 كود البريميوم</button>
             </div>
         </div>
     </div>
 
-    <!-- نافذة كود البريميوم -->
+    <!-- نافذة الكود -->
     <div class="modal" id="codeModal" style="display: none;">
         <div class="modal-content">
             <h3 style="color: #f59e0b;">👑 تفعيل كود البريميوم 👑</h3>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">احصل على 10 بوتات والرسائل التلقائية بالكامل!</p>
-            <input type="text" id="codeField" placeholder="أدخل الكود هنا...">
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">أدخل أحد الأكواد للحصول على 10 بوتات والنشر التلقائي!</p>
+            <input type="text" id="codeField" placeholder="مثال: HAMZA_PRO أو VIP2026">
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                 <button onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
                 <button onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
             </div>
             <p id="modalResult" style="margin-top: 12px; font-size: 13px; font-weight: bold;"></p>
-        </div>
-    </div>
-
-    <!-- نافذة الإعلانات -->
-    <div class="ad-popup" id="adPopup" style="display: none;">
-        <div class="modal-content ad-content">
-            <h2 style="color: #f59e0b; font-size: 22px;">🔥 ترقية إلى Premium! 🔥</h2>
-            <p style="margin: 15px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
-                ✨ تشغيل حتى 10 بوتات معاً<br>
-                💬 رسائل تلقائية مخصصة من اختيارك<br>
-                🚀 وقت استجابة سريع بدون انقطاع
-            </p>
-            <button onclick="openModalFromAd()" class="btn-gift" style="width: 100%; font-size: 16px; padding: 12px;">تفعيل الكود 🎁</button>
-            <button onclick="closeAd()" style="background: transparent; border: 1px solid #64748b; margin-top: 8px; width: 100%; color: #94a3b8;">إغلاق</button>
         </div>
     </div>
 
@@ -354,30 +327,41 @@ app.get('/', (req, res) => {
             document.getElementById('authScreen').style.display = 'none';
             document.getElementById('mainDashboard').style.display = 'flex';
             document.getElementById('userDisplay').textContent = 'أهلاً بك: ' + data.name + ' (' + data.email + ')';
-            
-            // جلب البوتات النشطة حالياً
-            updateActiveBotsList(data.activeBots || []);
-
-            setInterval(showAd, 45000);
-            setTimeout(showAd, 8000);
+            updateBotsCards(data.botsData || []);
         });
 
         socket.on('auth_error', (msg) => {
             document.getElementById('authError').textContent = msg;
         });
 
-        socket.on('update_bots_list', (botsList) => {
-            updateActiveBotsList(botsList);
+        // تحديث كروت البوتات لحظياً
+        socket.on('update_bots_data', (botsData) => {
+            updateBotsCards(botsData);
         });
 
-        function updateActiveBotsList(bots) {
-            const container = document.getElementById('activeBotsContainer');
-            if (bots.length === 0) {
-                container.innerHTML = '<span style="font-size: 11px; color: #64748b;">لا توجد بوتات نشطة حالياً</span>';
+        function updateBotsCards(bots) {
+            const container = document.getElementById('botsCardsContainer');
+            if (!bots || bots.length === 0) {
+                container.innerHTML = '<p style="color: #64748b; font-size: 13px;">لا توجد بوتات تعمل حالياً.</p>';
                 return;
             }
-            container.innerHTML = '<span style="font-size: 11px; color: #94a3b8;">البوتات المتصلة الآن: </span>' + 
-                bots.map(b => '<span class="bot-tag">🟢 ' + b + '</span>').join('');
+
+            container.innerHTML = bots.map(bot => `
+                <div class="bot-card">
+                    <button class="btn-kick" onclick="removeBot('\${bot.name}')">إيقاف ❌</button>
+                    <img class="bot-avatar" src="https://mc-heads.net/avatar/\${bot.name}/64" alt="skin">
+                    <div class="bot-info">
+                        <h4>\${bot.name}</h4>
+                        <div class="stat-bar">الحالة: <span style="color: #10b981;">\${bot.status}</span></div>
+                        <div class="stat-bar">❤️ القلوب: <b style="color: #ef4444;">\${bot.health} / 20</b></div>
+                        <div class="stat-bar">🍖 الجوع: <b style="color: #f59e0b;">\${bot.food} / 20</b></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function removeBot(botName) {
+            socket.emit('remove_bot', { email: currentUserEmail, botName });
         }
 
         socket.on('log', (msg) => {
@@ -433,7 +417,7 @@ app.get('/', (req, res) => {
             const delay = document.getElementById('autoMsgDelay').value;
 
             if (parseInt(delay) < 20) {
-                alert('الحد الأقصى للسرعة هو 20 ثانية لحماية السيرفر من السبام!');
+                alert('الحد الأقصى للسرعة هو 20 ثانية!');
                 return;
             }
 
@@ -441,11 +425,7 @@ app.get('/', (req, res) => {
         }
 
         function triggerParticles() {
-            confetti({
-                particleCount: 150,
-                spread: 90,
-                origin: { y: 0.6 }
-            });
+            confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
         }
 
         function openModal() { document.getElementById('codeModal').style.display = 'flex'; }
@@ -470,70 +450,59 @@ app.get('/', (req, res) => {
                 setTimeout(closeModal, 2500);
             }
         });
-
-        function showAd() {
-            if (!isPremiumUser) {
-                document.getElementById('adPopup').style.display = 'flex';
-            }
-        }
-        function closeAd() { document.getElementById('adPopup').style.display = 'none'; }
-        function openModalFromAd() { closeAd(); openModal(); }
     </script>
 </body>
 </html>
     `);
 });
 
-// التعامل مع اتصالات المستخدمين
+// تجهيز قائمة بيانات البوتات لإرسالها للواجهة
+function getFormattedBotsData(email) {
+    if (!userBots[email]) return [];
+    return Object.keys(userBots[email]).map(name => {
+        const b = userBots[email][name].instance;
+        return {
+            name: name,
+            status: b && b.entity ? 'متصل متزامن 🟢' : 'جاري الدخول ⏳',
+            health: b && b.health ? Math.round(b.health) : 20,
+            food: b && b.food ? Math.round(b.food) : 20
+        };
+    });
+}
+
 io.on('connection', (socket) => {
 
     socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
         if (usersDB[email]) {
-            socket.emit('auth_error', 'هذا البريد الإلكتروني مسجل بالفعل! اختر دخول.');
+            socket.emit('auth_error', 'هذا البريد مسجل بالفعل! اختر تسجيل الدخول.');
             return;
         }
 
-        usersDB[email] = {
-            name: data.name,
-            password: data.password,
-            isPremium: false,
-            maxBots: 2
-        };
+        usersDB[email] = { name: data.name, password: data.password, isPremium: false, maxBots: 2 };
         userBots[email] = {};
 
-        socket.emit('auth_success', {
-            email: email,
-            name: data.name,
-            activeBots: []
-        });
+        socket.emit('auth_success', { email, name: data.name, botsData: [] });
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('log', `[نظام] أهلاً بك يا ${data.name}! تم إنشاء حسابك بنجاح.`);
+        socket.emit('log', `[نظام] تم إنشاء الحساب بنجاح! أهلاً بك ${data.name}`);
     });
 
     socket.on('user_login', (data) => {
         const email = data.email.toLowerCase();
         const user = usersDB[email];
 
-        if (!user) {
-            socket.emit('auth_error', 'الحساب غير موجود! يرجى إنشاء حساب جديد (Register).');
+        if (!user || user.password !== data.password) {
+            socket.emit('auth_error', 'البيانات غير صحيحة!');
             return;
         }
-
-        if (user.password !== data.password) {
-            socket.emit('auth_error', 'كلمة المرور غير صحيحة!');
-            return;
-        }
-
-        const activeBotNames = userBots[email] ? Object.keys(userBots[email]) : [];
 
         socket.emit('auth_success', {
             email: email,
             name: user.name,
-            activeBots: activeBotNames
+            botsData: getFormattedBotsData(email)
         });
         socket.emit('premium_status', user);
-        socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}! تم استرجاع بوتاتك النشطة تلقائياً.`);
+        socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}!`);
     });
 
     socket.on('add_bot', (data) => {
@@ -543,10 +512,8 @@ io.on('connection', (socket) => {
         const user = usersDB[email];
         if (!userBots[email]) userBots[email] = {};
         
-        const currentBotCount = Object.keys(userBots[email]).length;
-
-        if (currentBotCount >= user.maxBots) {
-            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)! اشترك بالبريميوم لفتح 10 بوتات.`);
+        if (Object.keys(userBots[email]).length >= user.maxBots) {
+            socket.emit('log', `[تنبيه] وصلت للحد الأقصى (${user.maxBots} بوتات)! اشترك بالبريميوم لتشغيل حتى 10 بوتات.`);
             return;
         }
 
@@ -562,9 +529,17 @@ io.on('connection', (socket) => {
             username: username
         });
 
+        userBots[email][username] = { instance: bot };
+
         bot.on('login', () => {
-            io.emit('log', `[نظام - ${username}] تم الدخول بنجاح للسيرفر!`);
-            socket.emit('update_bots_list', Object.keys(userBots[email]));
+            // رسالة النجاح التي طلبتها
+            socket.emit('log', `[تم بنجاح] 🟢 تم إظهار وإنشاء البوت (${username}) ودخوله السيرفر بنجاح!`);
+            socket.emit('update_bots_data', getFormattedBotsData(email));
+        });
+
+        // تحديث الصحة والجوع مباشرة عند التغير
+        bot.on('health', () => {
+            socket.emit('update_bots_data', getFormattedBotsData(email));
         });
 
         bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
@@ -573,11 +548,21 @@ io.on('connection', (socket) => {
             io.emit('log', `[نظام] انقطع اتصال البوت (${username}).`);
             if (userBots[email]) {
                 delete userBots[email][username];
-                socket.emit('update_bots_list', Object.keys(userBots[email]));
+                socket.emit('update_bots_data', getFormattedBotsData(email));
             }
         });
 
-        userBots[email][username] = bot;
+        socket.emit('update_bots_data', getFormattedBotsData(email));
+    });
+
+    socket.on('remove_bot', (data) => {
+        const { email, botName } = data;
+        if (userBots[email] && userBots[email][botName]) {
+            userBots[email][botName].instance.quit();
+            delete userBots[email][botName];
+            socket.emit('update_bots_data', getFormattedBotsData(email));
+            socket.emit('log', `[نظام] تم إيقاف البوت (${botName}) بنجاح.`);
+        }
     });
 
     socket.on('command', (data) => {
@@ -586,7 +571,7 @@ io.on('connection', (socket) => {
 
         if (userBots[email]) {
             Object.keys(userBots[email]).forEach(botName => {
-                if (userBots[email][botName]) userBots[email][botName].chat(cmd);
+                if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
             });
             io.emit('log', `> [جميع البوتات]: ${cmd}`);
         }
@@ -606,7 +591,7 @@ io.on('connection', (socket) => {
             autoMessageIntervals[email] = setInterval(() => {
                 if (userBots[email]) {
                     Object.keys(userBots[email]).forEach(botName => {
-                        if (userBots[email][botName]) userBots[email][botName].chat(data.msg);
+                        if (userBots[email][botName].instance) userBots[email][botName].instance.chat(data.msg);
                     });
                 }
             }, delayMs);
@@ -622,7 +607,7 @@ io.on('connection', (socket) => {
         const item = promoCodes[code];
 
         if (!item || (item.maxUses !== -1 && item.usedCount >= item.maxUses)) {
-            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو منتهي!' });
+            socket.emit('code_response', { success: false, message: 'الكود غير صحيح أو انتهى عدد استخداماته!' });
             return;
         }
 
@@ -631,8 +616,8 @@ io.on('connection', (socket) => {
         usersDB[email].maxBots = 10;
 
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('code_response', { success: true, message: 'تم التفعيل! فتح 10 بوتات والنشر التلقائي المخصص 👑' });
-        io.emit('log', `[مبروك] الحساب (${email}) تمت ترقيته للبريميوم!`);
+        socket.emit('code_response', { success: true, message: 'تم التفعيل بنجاح! متاح لك 10 بوتات والنشر التلقائي 👑' });
+        io.emit('log', `[تحديث] الحساب (${email}) تم ترقيته إلى VIP!`);
     });
 });
 
