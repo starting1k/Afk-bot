@@ -24,6 +24,15 @@ const promoCodes = {
     'STARTING_KING': { type: 'lifetime', maxUses: 1, usedCount: 0 }
 };
 
+// دالة لحساب الإجمالي الكلي للبوتات الشغالة في الموقع كله
+function getTotalGlobalBots() {
+    let total = 0;
+    Object.keys(userBots).forEach(email => {
+        total += Object.keys(userBots[email] || {}).length;
+    });
+    return total;
+}
+
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -59,6 +68,18 @@ app.get('/', (req, res) => {
             -webkit-background-clip: text; 
             -webkit-text-fill-color: transparent; 
             font-weight: 900;
+        }
+
+        .global-stats {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10b981;
+            color: #34d399;
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 10px;
         }
 
         .badge-status {
@@ -178,15 +199,15 @@ app.get('/', (req, res) => {
     <div class="auth-modal" id="authScreen">
         <div class="modal-content">
             <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
-                <button class="tab-btn active" id="btnTabLogin" onclick="switchTab('login')">Login (دخول)</button>
-                <button class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
+                <button type="button" class="tab-btn active" id="btnTabLogin" onclick="switchTab('login')">Login (دخول)</button>
+                <button type="button" class="tab-btn" id="btnTabRegister" onclick="switchTab('register')">Register (حساب جديد)</button>
             </div>
 
             <div id="formLogin">
                 <h3 style="color: #a855f7; margin-bottom: 10px;">تسجيل الدخول</h3>
                 <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
                 <input type="password" id="loginPassword" placeholder="كلمة المرور">
-                <button onclick="handleLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
+                <button type="button" onclick="handleLogin()" style="width: 100%; margin-top: 10px;">دخول</button>
             </div>
 
             <div id="formRegister" style="display: none;">
@@ -195,7 +216,7 @@ app.get('/', (req, res) => {
                 <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
                 <input type="password" id="regPassword" placeholder="كلمة المرور">
                 <input type="password" id="regConfirmPassword" placeholder="تأكيد كلمة المرور">
-                <button onclick="handleRegister()" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
+                <button type="button" onclick="handleRegister()" style="width: 100%; margin-top: 10px; background: #10b981;">إنشاء الحساب</button>
             </div>
 
             <p id="authError" style="color: #ef4444; font-size: 12px; margin-top: 10px;"></p>
@@ -205,6 +226,8 @@ app.get('/', (req, res) => {
     <div class="container" id="mainDashboard" style="display: none;">
         <div class="header">
             <h1>⚡ STARTING SMP - CONTROL CENTER Pro ⚡</h1>
+            <div class="global-stats">🌐 البوتات الشغالة في الموقع حول العالم: <span id="globalBotsCount">0</span></div>
+            <br>
             <div id="statusBadge" class="badge-status">الحساب المجاني (حتى 2 بوتات)</div>
             <div id="userDisplay" style="font-size: 12px; color: #a855f7; margin-top: 5px;"></div>
         </div>
@@ -224,7 +247,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <button onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
+        <button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
 
         <div>
             <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً وتفاصيلها:</h3>
@@ -239,7 +262,7 @@ app.get('/', (req, res) => {
                 <input type="text" id="autoMsgInput" value="ادخل سيرفرنا الدسكورد: https://discord.gg/sBpn9hcF9" placeholder="اكتب الرسالة التي تريدها..." disabled>
                 <div style="display: flex; gap: 10px;">
                     <input type="number" id="autoMsgDelay" placeholder="الثواني (20 على الأقل)" value="20" disabled>
-                    <button onclick="saveAutoMsg()" style="background: #f59e0b; color: #000; flex: 1;" id="btnAutoMsg" disabled>تفعيل النشر</button>
+                    <button type="button" onclick="saveAutoMsg()" style="background: #f59e0b; color: #000; flex: 1;" id="btnAutoMsg" disabled>تفعيل النشر</button>
                 </div>
             </div>
         </div>
@@ -248,8 +271,8 @@ app.get('/', (req, res) => {
             <div class="messages" id="chat"></div>
             <div class="input-area">
                 <input type="text" id="msgInput" placeholder="أدخل أمراً أو رسالة لجميع البوتات..." onkeydown="if(event.key==='Enter') sendMsg()">
-                <button onclick="sendMsg()">إرسال</button>
-                <button class="btn-gift" onclick="openModal()">👑 كود البريميوم</button>
+                <button type="button" onclick="sendMsg()">إرسال</button>
+                <button type="button" class="btn-gift" onclick="openModal()">👑 كود البريميوم</button>
             </div>
         </div>
     </div>
@@ -260,8 +283,8 @@ app.get('/', (req, res) => {
             <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">أدخل أحد الأكواد للحصول على 10 بوتات والنشر التلقائي!</p>
             <input type="text" id="codeField" placeholder="مثال: HAMZA_PRO أو VIP2026">
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
-                <button onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
-                <button onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
+                <button type="button" onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
+                <button type="button" onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
             </div>
             <p id="modalResult" style="margin-top: 12px; font-size: 13px; font-weight: bold;"></p>
         </div>
@@ -328,6 +351,10 @@ app.get('/', (req, res) => {
             document.getElementById('authError').textContent = msg;
         });
 
+        socket.on('update_global_bots', (count) => {
+            document.getElementById('globalBotsCount').textContent = count;
+        });
+
         socket.on('update_bots_data', (botsData) => {
             updateBotsCards(botsData);
         });
@@ -341,7 +368,7 @@ app.get('/', (req, res) => {
 
             container.innerHTML = bots.map(function(bot) {
                 return '<div class="bot-card">' +
-                    '<button class="btn-kick" onclick="removeBot(\'' + bot.name + '\')">إيقاف ❌</button>' +
+                    '<button type="button" class="btn-kick" onclick="removeBot(\'' + bot.name + '\')">إيقاف ❌</button>' +
                     '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64" alt="skin">' +
                     '<div class="bot-info">' +
                         '<h4>' + bot.name + '</h4>' +
@@ -463,6 +490,8 @@ function getFormattedBotsData(email) {
 }
 
 io.on('connection', (socket) => {
+    // إرسال عدد البوتات الكلي فور الاتصال
+    socket.emit('update_global_bots', getTotalGlobalBots());
 
     socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
@@ -528,6 +557,7 @@ io.on('connection', (socket) => {
         bot.on('login', () => {
             socket.emit('log', `[تم بنجاح] 🟢 تم إظهار وإنشاء البوت (${username}) ودخوله السيرفر بنجاح!`);
             socket.emit('update_bots_data', getFormattedBotsData(email));
+            io.emit('update_global_bots', getTotalGlobalBots());
         });
 
         bot.on('health', () => {
@@ -541,10 +571,12 @@ io.on('connection', (socket) => {
             if (userBots[email]) {
                 delete userBots[email][username];
                 socket.emit('update_bots_data', getFormattedBotsData(email));
+                io.emit('update_global_bots', getTotalGlobalBots());
             }
         });
 
         socket.emit('update_bots_data', getFormattedBotsData(email));
+        io.emit('update_global_bots', getTotalGlobalBots());
     });
 
     socket.on('remove_bot', (data) => {
@@ -553,6 +585,7 @@ io.on('connection', (socket) => {
             userBots[email][botName].instance.quit();
             delete userBots[email][botName];
             socket.emit('update_bots_data', getFormattedBotsData(email));
+            io.emit('update_global_bots', getTotalGlobalBots());
             socket.emit('log', `[نظام] تم إيقاف البوت (${botName}) بنجاح.`);
         }
     });
