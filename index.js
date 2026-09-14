@@ -2,10 +2,16 @@ const express = require('express');
 const mineflayer = require('mineflayer');
 const http = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs-extra');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// ============================================
+// 💾 نظام حفظ البيانات الدائم
+// ============================================
+const DB_FILE = '/data/database.json';
 
 // ============================================
 // 👤 قاعدة بيانات المستخدمين
@@ -16,7 +22,7 @@ const usersDB = {
         password: 'Starting1k', 
         isPremium: true, 
         maxBots: 10,
-        premiumUntil: null  // null = للأبد
+        premiumUntil: null
     }
 }; 
 
@@ -29,34 +35,50 @@ let serverConfig = {
 };
 
 // ============================================
-// 🎁 أكواد البريميوم - قناة Starting
+// 🎁 أكواد البريميوم - قناة Starting22
 // ============================================
 const promoCodes = {
-    // 👑 مدى الحياة - شخصين فقط
-    'STARTING_LIFE': { 
-        type: 'lifetime', 
-        days: 0,           // 0 = مدى الحياة
-        maxUses: 2, 
-        usedCount: 0,
-        usedBy: []
-    },
-    // ⏳ 5 أيام - 10 أشخاص
-    'STARTING_5DAYS': { 
-        type: 'temporary', 
-        days: 5,
-        maxUses: 10, 
-        usedCount: 0,
-        usedBy: []
-    },
-    // 👑 مدى الحياة - شخص واحد (احتياطي)
-    'STARTING_KING': { 
-        type: 'lifetime', 
-        days: 0,
-        maxUses: 1, 
-        usedCount: 0,
-        usedBy: []
-    }
+    'STARTING_LIFE': { type: 'lifetime', days: 0, maxUses: 2, usedCount: 0, usedBy: [] },
+    'STARTING_5DAYS': { type: 'temporary', days: 5, maxUses: 10, usedCount: 0, usedBy: [] },
+    'STARTING_KING': { type: 'lifetime', days: 0, maxUses: 1, usedCount: 0, usedBy: [] }
 };
+
+// ============================================
+// 💾 دوال حفظ/تحميل البيانات
+// ============================================
+function loadDatabase() {
+    try {
+        if (fs.existsSync(DB_FILE)) {
+            const data = fs.readJsonSync(DB_FILE);
+            if (data.usersDB) Object.assign(usersDB, data.usersDB);
+            if (data.promoCodes) Object.assign(promoCodes, data.promoCodes);
+            console.log('✅ تم تحميل البيانات المحفوظة بنجاح');
+        } else {
+            console.log('📝 لا توجد بيانات محفوظة، بدء جديد');
+        }
+    } catch (e) {
+        console.log('⚠️ خطأ في تحميل البيانات:', e.message);
+    }
+}
+
+function saveDatabase() {
+    try {
+        fs.ensureDirSync('/data');
+        fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
+    } catch (e) {
+        console.log('⚠️ خطأ في حفظ البيانات:', e.message);
+    }
+}
+
+// حفظ تلقائي كل 30 ثانية
+setInterval(saveDatabase, 30000);
+
+// حفظ عند إغلاق السيرفر
+process.on('SIGINT', () => { saveDatabase(); process.exit(0); });
+process.on('SIGTERM', () => { saveDatabase(); process.exit(0); });
+
+// ✅ حمّل البيانات المحفوظة
+loadDatabase();
 
 function getTotalGlobalBots() {
     let total = 0;
@@ -66,10 +88,9 @@ function getTotalGlobalBots() {
     return total;
 }
 
-// ✅ فحص هل البريميوم لا زال ساري؟
 function isPremiumActive(user) {
     if (!user.isPremium) return false;
-    if (user.premiumUntil === null || user.premiumUntil === undefined) return true; // للأبد
+    if (user.premiumUntil === null || user.premiumUntil === undefined) return true;
     return Date.now() < user.premiumUntil;
 }
 
@@ -95,19 +116,27 @@ app.get('/', (req, res) => {
         .card { background: rgba(15, 23, 42, 0.8); padding: 14px; border-radius: 12px; border: 1px solid #334155; }
         .card label { font-size: 12px; color: #a855f7; display: block; margin-bottom: 6px; font-weight: bold; }
         .card input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #090d16; color: #fff; outline: none; }
-        .bots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 10px; }
-        .bot-card { background: rgba(30, 41, 59, 0.8); border: 2px solid #10b981; border-radius: 14px; padding: 15px; display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); position: relative; }
+        .bots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-top: 10px; }
+        .bot-card { background: rgba(30, 41, 59, 0.8); border: 2px solid #10b981; border-radius: 14px; padding: 15px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); position: relative; }
+        .bot-card-header { display: flex; align-items: center; gap: 15px; }
         .bot-avatar { width: 60px; height: 60px; border-radius: 8px; background: #090d16; border: 1px solid #334155; image-rendering: pixelated; }
         .bot-info { flex: 1; }
         .bot-info h4 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; }
         .stat-bar { font-size: 13px; margin: 3px 0; }
         .btn-kick { background: #ef4444; color: white; padding: 6px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; border: none; position: absolute; top: 10px; left: 10px; }
+        .bot-console { margin-top: 12px; display: flex; gap: 6px; }
+        .bot-console input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid #334155; background: #090d16; color: #fff; font-size: 12px; outline: none; }
+        .bot-console input:focus { border-color: #a855f7; }
+        .bot-console button { padding: 8px 14px; font-size: 14px; border-radius: 6px; background: linear-gradient(90deg, #6366f1, #a855f7); }
         .chat-box { background: rgba(15, 23, 42, 0.9); border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.3); height: 300px; display: flex; flex-direction: column; }
         .messages { flex: 1; padding: 15px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #38bdf8; }
-        .input-area { display: flex; padding: 12px; gap: 10px; border-top: 1px solid #334155; background: #0f172a; }
-        .input-area input { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #090d16; color: #fff; }
+        .input-area { display: flex; padding: 12px; gap: 10px; border-top: 1px solid #334155; background: #0f172a; align-items: center; flex-wrap: wrap; }
+        .input-area input { flex: 1; min-width: 150px; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #090d16; color: #fff; }
         button { padding: 12px 18px; border-radius: 8px; border: none; background: linear-gradient(90deg, #6366f1, #a855f7); color: #fff; font-weight: bold; cursor: pointer; }
         .btn-gift { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+        .btn-youtube { background: linear-gradient(90deg, #ff0000, #cc0000) !important; padding: 12px 14px !important; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(255, 0, 0, 0.4); border-radius: 8px; }
+        .btn-youtube:hover { transform: translateY(-2px) scale(1.08); box-shadow: 0 6px 18px rgba(255, 0, 0, 0.7); }
+        .btn-youtube svg { width: 22px; height: 22px; fill: #fff; }
         .modal, .auth-modal { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); justify-content: center; align-items: center; z-index: 9999; }
         .modal-content { background: #1e293b; padding: 25px; border-radius: 16px; width: 90%; max-width: 420px; text-align: center; border: 2px solid #a855f7; }
         .modal-content input { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; }
@@ -181,16 +210,16 @@ app.get('/', (req, res) => {
         <button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل/إضافة البوت</button>
 
         <div>
-            <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً:</h3>
+            <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات المشغلة حالياً (لكل بوت كونسول خاص):</h3>
             <div class="bots-grid" id="botsCardsContainer">
                 <p style="color: #64748b; font-size: 13px;">لا توجد بوتات تعمل حالياً.</p>
             </div>
         </div>
 
         <div class="card" style="border-color: #f59e0b;">
-            <label style="color: #f59e0b;">👑 إرسال رسالة تلقائية (Auto-Message)</label>
+            <label style="color: #f59e0b;">👑 إرسال رسالة تلقائية (لجميع البوتات - بريميوم فقط)</label>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-                <input type="text" id="autoMsgInput" value="انضم لقناتنا: Starting | https://discord.gg/sBpn9hcF9" disabled>
+                <input type="text" id="autoMsgInput" value="انضم لقناتنا: Starting22 | https://youtube.com/@starting22" disabled>
                 <div style="display: flex; gap: 10px;">
                     <input type="number" id="autoMsgDelay" placeholder="الثواني (20+)" value="20" disabled>
                     <button type="button" onclick="saveAutoMsg()" style="background: #f59e0b; color: #000; flex: 1;" id="btnAutoMsg" disabled>تفعيل النشر</button>
@@ -201,9 +230,14 @@ app.get('/', (req, res) => {
         <div class="chat-box">
             <div class="messages" id="chat"></div>
             <div class="input-area">
-                <input type="text" id="msgInput" placeholder="أدخل أمراً أو رسالة..." onkeydown="if(event.key==='Enter') sendMsg()">
-                <button type="button" onclick="sendMsg()">إرسال</button>
-                <button type="button" class="btn-gift" onclick="openModal()">👑 كود البريميوم</button>
+                <input type="text" id="msgInput" placeholder="أمر لجميع البوتات..." onkeydown="if(event.key==='Enter') sendMsg()">
+                <button type="button" onclick="sendMsg()">إرسال للكل</button>
+                <button type="button" class="btn-gift" onclick="openModal()">👑 بريميوم</button>
+                <a href="https://www.youtube.com/@%D8%AD%D9%85%D8%B2%D8%A9%D8%B2%D9%8A%D8%A7%D8%AA-%D8%B86%D8%B4" target="_blank" class="btn-youtube" title="قناة Starting22 على يوتيوب">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                </a>
             </div>
         </div>
     </div>
@@ -211,7 +245,7 @@ app.get('/', (req, res) => {
     <div class="modal" id="codeModal" style="display: none;">
         <div class="modal-content">
             <h3 style="color: #f59e0b;">👑 تفعيل كود البريميوم 👑</h3>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">تابع قناة <b style="color:#a855f7;">Starting</b> للحصول على الأكواد!</p>
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 5px;">تابع قناة <b style="color:#a855f7;">Starting22</b> للحصول على الأكواد!</p>
             <input type="text" id="codeField" placeholder="أدخل الكود هنا">
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                 <button type="button" onclick="redeemCode()" style="background: #10b981;">تفعيل الآن</button>
@@ -268,24 +302,48 @@ app.get('/', (req, res) => {
 
         function updateBotsCards(bots) {
             const container = document.getElementById('botsCardsContainer');
+            
+            // احفظ القيم المكتوبة حالياً في الكونسولات قبل إعادة الرسم
+            const currentInputs = {};
+            document.querySelectorAll('.bot-console input').forEach(inp => {
+                if (inp.id && inp.value) currentInputs[inp.id] = inp.value;
+            });
+            
             if (!bots || bots.length === 0) {
                 container.innerHTML = '<p style="color: #64748b; font-size: 13px;">لا توجد بوتات تعمل حالياً.</p>';
                 return;
             }
             container.innerHTML = bots.map(function(bot) {
+                const safeId = 'cmd_' + bot.name.replace(/[^a-zA-Z0-9_]/g, '_');
+                const oldValue = currentInputs[safeId] || '';
                 return '<div class="bot-card">' +
                     '<button type="button" class="btn-kick" onclick="removeBot(\\'' + bot.name + '\\')">إيقاف ❌</button>' +
-                    '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64" alt="skin">' +
-                    '<div class="bot-info">' +
-                        '<h4>' + bot.name + '</h4>' +
-                        '<div class="stat-bar">الحالة: <span style="color: #10b981;">' + bot.status + '</span></div>' +
-                        '<div class="stat-bar">❤️ القلوب: <b style="color: #ef4444;">' + bot.health + ' / 20</b></div>' +
-                        '<div class="stat-bar">🍖 الجوع: <b style="color: #f59e0b;">' + bot.food + ' / 20</b></div>' +
-                    '</div></div>';
+                    '<div class="bot-card-header">' +
+                        '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64" alt="skin">' +
+                        '<div class="bot-info">' +
+                            '<h4>' + bot.name + '</h4>' +
+                            '<div class="stat-bar">الحالة: <span style="color: #10b981;">' + bot.status + '</span></div>' +
+                            '<div class="stat-bar">❤️ القلوب: <b style="color: #ef4444;">' + bot.health + ' / 20</b></div>' +
+                            '<div class="stat-bar">🍖 الجوع: <b style="color: #f59e0b;">' + bot.food + ' / 20</b></div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="bot-console">' +
+                        '<input type="text" id="' + safeId + '" value="' + oldValue + '" placeholder="أمر لهذا البوت فقط..." onkeydown="if(event.key===\\'Enter\\') sendBotCmd(\\'' + bot.name + '\\')">' +
+                        '<button type="button" onclick="sendBotCmd(\\'' + bot.name + '\\')">▶</button>' +
+                    '</div>' +
+                '</div>';
             }).join('');
         }
 
         function removeBot(botName) { socket.emit('remove_bot', { email: currentUserEmail, botName }); }
+
+        function sendBotCmd(botName) {
+            const safeId = 'cmd_' + botName.replace(/[^a-zA-Z0-9_]/g, '_');
+            const input = document.getElementById(safeId);
+            if (!input || !input.value.trim()) return;
+            socket.emit('command_single', { email: currentUserEmail, botName: botName, cmd: input.value });
+            input.value = '';
+        }
 
         function addBot() {
             const ip = document.getElementById('ipInput').value;
@@ -360,7 +418,6 @@ app.get('/', (req, res) => {
                 badge.textContent = '👑 العضوية الممتازة (حتى 10 بوتات)';
                 autoInput.disabled = false; autoDelay.disabled = false; autoBtn.disabled = false;
                 
-                // ⏳ إذا كان مؤقت، عرض العد التنازلي
                 if (data.premiumUntil) {
                     const updateTimer = () => {
                         const remaining = data.premiumUntil - Date.now();
@@ -432,6 +489,7 @@ io.on('connection', (socket) => {
         socket.emit('auth_success', { email, name: data.name, botsData: [] });
         socket.emit('premium_status', usersDB[email]);
         socket.emit('log', `[نظام] تم إنشاء الحساب بنجاح! أهلاً بك ${data.name}`);
+        saveDatabase(); // ✅ حفظ
     });
 
     socket.on('user_login', (data) => {
@@ -442,11 +500,11 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // ✅ فحص إذا انتهى البريميوم المؤقت
         if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
             user.isPremium = false;
             user.maxBots = 2;
             user.premiumUntil = null;
+            saveDatabase();
         }
         
         socket.emit('auth_success', { email: email, name: user.name, botsData: getFormattedBotsData(email) });
@@ -459,12 +517,12 @@ io.on('connection', (socket) => {
         if (!email || !usersDB[email]) return;
         const user = usersDB[email];
         
-        // ✅ فحص انتهاء البريميوم قبل الإضافة
         if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
             user.isPremium = false;
             user.maxBots = 2;
             user.premiumUntil = null;
             socket.emit('premium_status', user);
+            saveDatabase();
         }
         
         if (!userBots[email]) userBots[email] = {};
@@ -484,7 +542,7 @@ io.on('connection', (socket) => {
             checkTimeoutInterval: 60000,
             physicsEnabled: false
         });
-        userBots[email][username] = { instance: bot };
+        userBots[email][username] = { instance: bot, host: data.ip, port: data.port };
 
         bot.on('login', () => {
             socket.emit('log', `[تم بنجاح] 🟢 البوت (${username}) دخل السيرفر!`);
@@ -519,6 +577,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ✅ أمر لجميع البوتات
     socket.on('command', (data) => {
         const email = data.email;
         const cmd = data.cmd;
@@ -527,6 +586,15 @@ io.on('connection', (socket) => {
                 if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
             });
             io.emit('log', `> [جميع البوتات]: ${cmd}`);
+        }
+    });
+
+    // ✅ أمر لبوت واحد فقط
+    socket.on('command_single', (data) => {
+        const { email, botName, cmd } = data;
+        if (userBots[email] && userBots[email][botName] && userBots[email][botName].instance) {
+            userBots[email][botName].instance.chat(cmd);
+            io.emit('log', `> [${botName}]: ${cmd}`);
         }
     });
 
@@ -552,9 +620,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ============================================
     // 🎁 تفعيل كود البريميوم
-    // ============================================
     socket.on('redeem_code', (data) => {
         const email = data.email;
         const code = data.code.trim().toUpperCase();
@@ -581,7 +647,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // ✅ تفعيل الكود
         item.usedCount++;
         item.usedBy.push(email);
         usersDB[email].isPremium = true;
@@ -589,7 +654,7 @@ io.on('connection', (socket) => {
 
         let durationText = '';
         if (item.type === 'lifetime') {
-            usersDB[email].premiumUntil = null; // للأبد
+            usersDB[email].premiumUntil = null;
             durationText = '♾️ مدى الحياة';
         } else if (item.type === 'temporary') {
             usersDB[email].premiumUntil = Date.now() + (item.days * 24 * 60 * 60 * 1000);
@@ -599,14 +664,15 @@ io.on('connection', (socket) => {
         const remaining = item.maxUses - item.usedCount;
         let msg = `✅ تم التفعيل بنجاح! (${durationText}) متاح لك 10 بوتات + نشر تلقائي 👑`;
         if (remaining > 0) {
-            msg += ` | متبقي ${remaining} استخدام من نفس الكود`;
+            msg += ` | متبقي ${remaining} استخدام`;
         } else {
             msg += ` | 🎉 آخر من استخدم هذا الكود!`;
         }
 
         socket.emit('premium_status', usersDB[email]);
         socket.emit('code_response', { success: true, message: msg });
-        io.emit('log', `[تحديث] 🎉 الحساب (${email}) تم ترقيته إلى VIP عبر قناة Starting! (${durationText})`);
+        io.emit('log', `[تحديث] 🎉 الحساب (${email}) تم ترقيته إلى VIP! (${durationText})`);
+        saveDatabase(); // ✅ حفظ
     });
 });
 
