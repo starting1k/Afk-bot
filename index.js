@@ -15,6 +15,7 @@ const usersDB = {
 }; 
 const userBots = {}; 
 const autoMessageIntervals = {}; 
+const reconnectTimers = {};
 
 let serverConfig = { host: 'StArTiNG1K.ATeRNoS.Me', port: 25565 };
 
@@ -30,16 +31,16 @@ function loadDatabase() {
             const data = fs.readJsonSync(DB_FILE);
             if (data.usersDB) Object.assign(usersDB, data.usersDB);
             if (data.promoCodes) Object.assign(promoCodes, data.promoCodes);
-            console.log('✅ تم تحميل البيانات المحفوظة');
+            console.log('✅ تم تحميل البيانات');
         } else { console.log('📝 بدء جديد'); }
-    } catch (e) { console.log('⚠️ خطأ في التحميل:', e.message); }
+    } catch (e) { console.log('⚠️ خطأ:', e.message); }
 }
 
 function saveDatabase() {
     try {
         fs.ensureDirSync('/data');
         fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
-    } catch (e) { console.log('⚠️ خطأ في الحفظ:', e.message); }
+    } catch (e) { console.log('⚠️ خطأ حفظ:', e.message); }
 }
 
 setInterval(saveDatabase, 30000);
@@ -59,6 +60,51 @@ function isPremiumActive(user) {
     return Date.now() < user.premiumUntil;
 }
 
+function createBotInstance(email, username, host, port) {
+    const botKey = email + '_' + username;
+    const bot = mineflayer.createBot({
+        host: host, port: parseInt(port), username: username,
+        checkTimeoutInterval: 60000, physicsEnabled: false, hideErrors: true
+    });
+    userBots[email][username] = { instance: bot, host: host, port: port };
+    io.emit('update_global_bots', getTotalGlobalBots());
+
+    bot.on('login', () => {
+        io.emit('log', `[✅] البوت (${username}) دخل السيرفر!`);
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email));
+    });
+    bot.on('spawn', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
+    bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
+    bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
+    bot.on('error', (err) => {
+        const msg = err.message || '';
+        if (!msg.includes('ECONNREFUSED') && !msg.includes('TIMEOUT')) {
+            io.emit('log', `[خطأ - ${username}] ${msg}`);
+        }
+    });
+    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد`));
+    bot.on('end', () => {
+        io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
+        if (userBots[email] && userBots[email][username]) {
+            delete userBots[email][username];
+            io.to(email).emit('update_bots_data', getFormattedBotsData(email));
+            io.emit('update_global_bots', getTotalGlobalBots());
+        }
+        if (reconnectTimers[botKey]) clearTimeout(reconnectTimers[botKey]);
+        reconnectTimers[botKey] = setTimeout(() => {
+            if (!userBots[email]) userBots[email] = {};
+            if (userBots[email][username]) return;
+            const user = usersDB[email];
+            if (!user) return;
+            const currentBots = Object.keys(userBots[email]).length;
+            if (currentBots >= user.maxBots) return;
+            io.emit('log', `[🚀] إعادة تشغيل (${username})...`);
+            createBotInstance(email, username, host, port);
+        }, 10000);
+    });
+    return bot;
+}
+
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -71,84 +117,58 @@ app.get('/', (req, res) => {
 <style>
 * { box-sizing: border-box; font-family: 'Tajawal', sans-serif; margin: 0; padding: 0; }
 html, body { min-height: 100vh; color: #f1f5f9; padding: 20px; overflow-x: hidden; background: #050810; }
-body::before {
-    content: '';
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: 
-        radial-gradient(ellipse at 20% 10%, rgba(139, 92, 246, 0.25) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 90%, rgba(168, 85, 247, 0.15) 0%, transparent 60%),
-        radial-gradient(circle at 50% 0%, #1a1535 0%, #0a0d1e 50%, #050810 100%);
-    z-index: -2;
-}
-body::after {
-    content: '';
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background-image: 
-        radial-gradient(2px 2px at 20px 30px, #fff, transparent),
-        radial-gradient(2px 2px at 60px 70px, #a855f7, transparent),
-        radial-gradient(1px 1px at 50px 160px, #fff, transparent),
-        radial-gradient(1px 1px at 130px 40px, #38bdf8, transparent),
-        radial-gradient(2px 2px at 90px 120px, #fff, transparent),
-        radial-gradient(1px 1px at 200px 80px, #a855f7, transparent),
-        radial-gradient(1px 1px at 250px 200px, #fff, transparent),
-        radial-gradient(2px 2px at 300px 100px, #38bdf8, transparent);
-    background-repeat: repeat;
-    background-size: 350px 250px;
-    opacity: 0.4;
-    z-index: -1;
-    animation: starsMove 120s linear infinite;
-}
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(ellipse at 20% 10%, rgba(139, 92, 246, 0.25) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(59, 130, 246, 0.2) 0%, transparent 50%), radial-gradient(ellipse at 50% 90%, rgba(168, 85, 247, 0.15) 0%, transparent 60%), radial-gradient(circle at 50% 0%, #1a1535 0%, #0a0d1e 50%, #050810 100%); z-index: -2; }
+body::after { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-image: radial-gradient(2px 2px at 20px 30px, #fff, transparent), radial-gradient(2px 2px at 60px 70px, #a855f7, transparent), radial-gradient(1px 1px at 50px 160px, #fff, transparent), radial-gradient(1px 1px at 130px 40px, #38bdf8, transparent), radial-gradient(2px 2px at 90px 120px, #fff, transparent), radial-gradient(1px 1px at 200px 80px, #a855f7, transparent), radial-gradient(1px 1px at 250px 200px, #fff, transparent), radial-gradient(2px 2px at 300px 100px, #38bdf8, transparent); background-repeat: repeat; background-size: 350px 250px; opacity: 0.4; z-index: -1; animation: starsMove 120s linear infinite; }
 @keyframes starsMove { from { background-position: 0 0; } to { background-position: 350px 250px; } }
 .container { max-width: 950px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; position: relative; z-index: 1; }
-.header { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 25px; border-radius: 20px; border: 1px solid rgba(168, 85, 247, 0.3); text-align: center; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 60px rgba(168, 85, 247, 0.15); position: relative; overflow: hidden; }
-.header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #a855f7, #3b82f6, #a855f7, transparent); animation: glowLine 3s ease-in-out infinite; }
-@keyframes glowLine { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
-.header h1 { font-size: 28px; background: linear-gradient(90deg, #a855f7, #3b82f6, #a855f7); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; animation: textShine 3s linear infinite; text-shadow: 0 0 30px rgba(168, 85, 247, 0.5); }
+.header { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(20px); padding: 25px; border-radius: 20px; border: 1px solid rgba(168, 85, 247, 0.3); text-align: center; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 60px rgba(168, 85, 247, 0.15); position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #a855f7, #3b82f6, #a855f7, transparent); }
+.header h1 { font-size: 28px; background: linear-gradient(90deg, #a855f7, #3b82f6, #a855f7); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; animation: textShine 3s linear infinite; }
 @keyframes textShine { to { background-position: 200% center; } }
-.global-stats { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.5); color: #34d399; padding: 8px 20px; border-radius: 20px; display: inline-block; font-weight: bold; font-size: 14px; margin-top: 12px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
-.badge-status { display: inline-block; margin-top: 10px; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; background: rgba(51, 65, 85, 0.6); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); backdrop-filter: blur(10px); }
-.badge-premium { background: linear-gradient(90deg, #eab308, #f97316); color: #000; border: none; box-shadow: 0 0 25px rgba(234, 179, 8, 0.6); }
+.global-stats { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.5); color: #34d399; padding: 8px 20px; border-radius: 20px; display: inline-block; font-weight: bold; font-size: 14px; margin-top: 12px; }
+.badge-status { display: inline-block; margin-top: 10px; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; background: rgba(51, 65, 85, 0.6); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+.badge-premium { background: linear-gradient(90deg, #eab308, #f97316); color: #000; border: none; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); padding: 16px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.15); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05); transition: all 0.3s ease; }
-.card:hover { border-color: rgba(168, 85, 247, 0.4); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 40px rgba(168, 85, 247, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1); transform: translateY(-2px); }
+.card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(15px); padding: 16px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.15); }
 .card label { font-size: 12px; color: #a855f7; display: block; margin-bottom: 6px; font-weight: bold; }
-.card input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.7); color: #fff; outline: none; transition: all 0.3s ease; }
-.card input:focus { border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.3); }
-.bots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-top: 10px; }
-.bot-card { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border: 2px solid rgba(16, 185, 129, 0.5); border-radius: 16px; padding: 15px; box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4), 0 0 30px rgba(16, 185, 129, 0.15); position: relative; transition: all 0.3s ease; }
-.bot-card:hover { border-color: rgba(16, 185, 129, 0.8); transform: translateY(-3px); }
+.card input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.7); color: #fff; outline: none; }
+.bots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-top: 10px; }
+.bot-card { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(15px); border: 2px solid rgba(16, 185, 129, 0.5); border-radius: 16px; padding: 15px; position: relative; }
 .bot-card-header { display: flex; align-items: center; gap: 15px; }
-.bot-avatar { width: 60px; height: 60px; border-radius: 10px; background: #090d16; border: 2px solid rgba(56, 189, 248, 0.4); image-rendering: pixelated; box-shadow: 0 0 20px rgba(56, 189, 248, 0.3); }
+.bot-avatar { width: 60px; height: 60px; border-radius: 10px; background: #090d16; border: 2px solid rgba(56, 189, 248, 0.4); image-rendering: pixelated; }
 .bot-info { flex: 1; }
-.bot-info h4 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+.bot-info h4 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; }
 .stat-bar { font-size: 13px; margin: 3px 0; }
-.btn-kick { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 6px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; border: none; position: absolute; top: 10px; left: 10px; }
+.btn-kick { background: #ef4444; color: white; padding: 6px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; border: none; position: absolute; top: 10px; left: 10px; }
 .bot-console { margin-top: 12px; display: flex; gap: 6px; }
 .bot-console input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.8); color: #fff; font-size: 12px; outline: none; }
-.bot-console input:focus { border-color: #a855f7; box-shadow: 0 0 12px rgba(168, 85, 247, 0.4); }
 .bot-console button { padding: 8px 14px; font-size: 14px; border-radius: 6px; background: linear-gradient(90deg, #6366f1, #a855f7); }
-.chat-box { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(20px); border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.3); height: 320px; display: flex; flex-direction: column; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
+.bot-quick-btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.bot-quick-btns button { flex: 1; min-width: 40px; padding: 6px 8px; font-size: 14px; border-radius: 6px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: #fff; cursor: pointer; box-shadow: none; }
+.bot-quick-btns button:hover { background: linear-gradient(90deg, #6366f1, #a855f7); }
+.bot-move-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 8px; }
+.bot-move-btns button { padding: 8px 4px; font-size: 16px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.5); color: #fff; cursor: pointer; box-shadow: none; }
+.bot-move-btns button:hover { background: linear-gradient(90deg, #10b981, #059669); }
+.chat-box { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(20px); border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.3); height: 350px; display: flex; flex-direction: column; }
 .messages { flex: 1; padding: 15px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #38bdf8; }
 .messages::-webkit-scrollbar { width: 6px; }
 .messages::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.5); border-radius: 3px; }
+.global-quick-btns { display: flex; gap: 8px; padding: 10px 12px; background: rgba(15, 23, 42, 0.6); border-top: 1px solid rgba(148, 163, 184, 0.1); flex-wrap: wrap; }
+.global-quick-btns button { flex: 1; min-width: 100px; padding: 8px 12px; font-size: 12px; border-radius: 6px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); color: #fff; cursor: pointer; box-shadow: none; }
+.global-quick-btns button:hover { background: linear-gradient(90deg, #6366f1, #a855f7); }
 .input-area { display: flex; padding: 12px; gap: 10px; border-top: 1px solid rgba(148, 163, 184, 0.15); background: rgba(15, 23, 42, 0.5); align-items: center; flex-wrap: wrap; border-radius: 0 0 16px 16px; }
 .input-area input { flex: 1; min-width: 150px; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.8); color: #fff; outline: none; }
-.input-area input:focus { border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.3); }
-button { padding: 12px 20px; border-radius: 8px; border: none; background: linear-gradient(90deg, #6366f1, #a855f7); color: #fff; font-weight: bold; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
-button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(139, 92, 246, 0.6); }
+button { padding: 12px 20px; border-radius: 8px; border: none; background: linear-gradient(90deg, #6366f1, #a855f7); color: #fff; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
+button:hover { transform: translateY(-2px); }
 .btn-gift { background: linear-gradient(90deg, #f59e0b, #ef4444); }
-.btn-youtube { background: linear-gradient(90deg, #ff0000, #cc0000) !important; padding: 12px 14px !important; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4); border-radius: 8px; }
-.btn-youtube:hover { transform: translateY(-2px) scale(1.08); box-shadow: 0 8px 25px rgba(255, 0, 0, 0.7); }
+.btn-youtube { background: linear-gradient(90deg, #ff0000, #cc0000) !important; padding: 12px 14px !important; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border-radius: 8px; }
 .btn-youtube svg { width: 22px; height: 22px; fill: #fff; }
 .modal, .auth-modal { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); justify-content: center; align-items: center; z-index: 9999; }
-.modal-content { background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95)); backdrop-filter: blur(20px); padding: 28px; border-radius: 20px; width: 90%; max-width: 420px; text-align: center; border: 2px solid rgba(168, 85, 247, 0.5); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 80px rgba(168, 85, 247, 0.3); position: relative; }
+.modal-content { background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95)); padding: 28px; border-radius: 20px; width: 90%; max-width: 420px; text-align: center; border: 2px solid rgba(168, 85, 247, 0.5); }
 .modal-content input { width: 100%; padding: 12px 14px; margin: 6px 0; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(9, 13, 22, 0.8); color: #fff; text-align: center; outline: none; }
-.modal-content input:focus { border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); }
 .password-container { position: relative; width: 100%; display: flex; align-items: center; margin: 6px 0; }
 .password-container input { margin: 0 !important; padding-left: 45px !important; }
 .eye-btn { position: absolute; left: 10px; background: transparent !important; border: none !important; font-size: 18px; cursor: pointer; padding: 5px !important; user-select: none; box-shadow: none !important; }
-.eye-btn:hover { transform: scale(1.2); }
 .tab-btn { padding: 8px 18px; background: rgba(51, 65, 85, 0.6); color: #fff; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); cursor: pointer; }
 .tab-btn.active { background: linear-gradient(90deg, #6366f1, #a855f7); font-weight: bold; border-color: transparent; }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
@@ -156,6 +176,7 @@ button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(139, 92,
 </style>
 </head>
 <body>
+
 <div class="auth-modal" id="authScreen">
 <div class="modal-content">
 <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
@@ -202,13 +223,16 @@ button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(139, 92,
 <div class="grid">
 <div class="card"><label>IP السيرفر</label><input type="text" id="ipInput" value="${serverConfig.host}"></div>
 <div class="card"><label>Port</label><input type="number" id="portInput" value="${serverConfig.port}"></div>
-<div class="card"><label>اسم البوت</label><input type="text" id="botNameInput" value="sub_starting22"></div>
+<div class="card">
+<label>اسم البوت <span id="nameLock" style="color: #ef4444; font-size: 10px;">🔒 للمميزين فقط</span></label>
+<input type="text" id="botNameInput" value="sub_starting22" readonly style="opacity: 0.6; cursor: not-allowed;">
+</div>
 </div>
 
-<button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل البوت</button>
+<button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل البوت (24/7)</button>
 
 <div>
-<h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات (كونسول خاص لكل بوت):</h3>
+<h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات (كونسول + أزرار لكل بوت):</h3>
 <div class="bots-grid" id="botsCardsContainer">
 <p style="color: #64748b; font-size: 13px;">لا توجد بوتات.</p>
 </div>
@@ -227,6 +251,12 @@ button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(139, 92,
 
 <div class="chat-box">
 <div class="messages" id="chat"></div>
+<div class="global-quick-btns">
+<button type="button" onclick="sendMsgQuick('/home')">🏠 الكل /home</button>
+<button type="button" onclick="sendMsgQuick('/spawn')">📍 الكل /spawn</button>
+<button type="button" onclick="sendMsgQuick('السلام عليكم')">👋 سلام</button>
+<button type="button" onclick="sendMsgQuick('من يريد أن يلعب؟')">🎮 لعب</button>
+</div>
 <div class="input-area">
 <input type="text" id="msgInput" placeholder="أمر للكل..." onkeydown="if(event.key==='Enter') sendMsg()">
 <button type="button" onclick="sendMsg()">للجميع</button>
@@ -317,6 +347,23 @@ function updateBotsCards(bots) {
                 '<input type="text" id="' + safeId + '" value="' + oldValue + '" placeholder="أمر لهذا البوت..." onkeydown="if(event.key===\\'Enter\\') sendBotCmd(\\'' + bot.name + '\\')">' +
                 '<button type="button" onclick="sendBotCmd(\\'' + bot.name + '\\')">▶</button>' +
             '</div>' +
+            '<div class="bot-quick-btns">' +
+                '<button type="button" onclick="quickCmd(\\'' + bot.name + '\\', \\'/home\\')">🏠</button>' +
+                '<button type="button" onclick="quickCmd(\\'' + bot.name + '\\', \\'/spawn\\')">📍</button>' +
+                '<button type="button" onclick="quickCmd(\\'' + bot.name + '\\', \\'/tpa\\')">🤝</button>' +
+                '<button type="button" onclick="quickCmd(\\'' + bot.name + '\\', \\'/afk\\')">💤</button>' +
+                '<button type="button" onclick="quickCmd(\\'' + bot.name + '\\', \\'السلام عليكم\\')">👋</button>' +
+            '</div>' +
+            '<div class="bot-move-btns">' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'forward\\')" title="أمام">⬆️</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'back\\')" title="خلف">⬇️</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'left\\')" title="يسار">⬅️</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'right\\')" title="يمين">➡️</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'jump\\')" title="قفز">⤒</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'sneak\\')" title="انخفاض">⤓</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'stop\\')" title="إيقاف">⏸️</button>' +
+                '<button type="button" onclick="moveBot(\\'' + bot.name + '\\', \\'lookAround\\')" title="تلفت">👀</button>' +
+            '</div>' +
         '</div>';
     }).join('');
 }
@@ -328,6 +375,12 @@ function sendBotCmd(botName) {
     socket.emit('command_single', { email: currentUserEmail, botName: botName, cmd: input.value });
     input.value = '';
 }
+function quickCmd(botName, cmd) {
+    socket.emit('command_single', { email: currentUserEmail, botName: botName, cmd: cmd });
+}
+function moveBot(botName, action) {
+    socket.emit('bot_move', { email: currentUserEmail, botName: botName, action: action });
+}
 function addBot() {
     const ip = document.getElementById('ipInput').value;
     const port = document.getElementById('portInput').value;
@@ -338,6 +391,9 @@ function addBot() {
 function sendMsg() {
     const input = document.getElementById('msgInput');
     if (input.value.trim()) { socket.emit('command', { email: currentUserEmail, cmd: input.value }); input.value = ''; }
+}
+function sendMsgQuick(cmd) {
+    socket.emit('command', { email: currentUserEmail, cmd: cmd });
 }
 function saveAutoMsg() {
     const msg = document.getElementById('autoMsgInput').value;
@@ -356,14 +412,9 @@ function celebrationTemporary() {
 function celebrationLifetime() {
     if (typeof confetti !== 'function') return;
     confetti({ particleCount: 200, spread: 120, origin: { y: 0.6 }, colors: ['#eab308', '#f59e0b', '#f97316'] });
-    setTimeout(() => {
-        confetti({ particleCount: 80, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, colors: ['#eab308'] });
-        confetti({ particleCount: 80, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, colors: ['#eab308'] });
-    }, 250);
+    setTimeout(() => { confetti({ particleCount: 80, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, colors: ['#eab308'] }); confetti({ particleCount: 80, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, colors: ['#eab308'] }); }, 250);
     setTimeout(() => { confetti({ particleCount: 150, spread: 160, origin: { y: 0.5 }, colors: ['#fbbf24'] }); }, 600);
-    setTimeout(() => {
-        confetti({ particleCount: 100, startVelocity: 25, spread: 360, ticks: 100, origin: { x: 0.5, y: 0 }, shapes: ['star'] });
-    }, 900);
+    setTimeout(() => { confetti({ particleCount: 100, startVelocity: 25, spread: 360, ticks: 100, origin: { x: 0.5, y: 0 }, shapes: ['star'] }); }, 900);
 }
 function celebrationEpic() {
     if (typeof confetti !== 'function') return;
@@ -378,30 +429,8 @@ function celebrationEpic() {
     setTimeout(() => { confetti({ particleCount: 200, startVelocity: 30, spread: 360, ticks: 120, origin: { x: 0.5, y: 0 }, shapes: ['star'] }); }, 500);
     setTimeout(() => { confetti({ particleCount: 400, spread: 360, startVelocity: 40, origin: { y: 0.5 }, colors: colors, scalar: 1.5 }); }, 2000);
 }
-function animateModalOpen() {
-    const modal = document.querySelector('#codeModal .modal-content');
-    if (!modal) return;
-    modal.style.transform = 'scale(0.5) rotate(-5deg)';
-    modal.style.opacity = '0';
-    modal.style.transition = 'all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55)';
-    setTimeout(() => { modal.style.transform = 'scale(1) rotate(0deg)'; modal.style.opacity = '1'; }, 50);
-}
-function animateModalClose() {
-    const modal = document.querySelector('#codeModal .modal-content');
-    if (!modal) return;
-    modal.style.transform = 'scale(0.5) rotate(5deg)';
-    modal.style.opacity = '0';
-}
-function openModal() { document.getElementById('codeModal').style.display = 'flex'; animateModalOpen(); }
-function closeModal() {
-    animateModalClose();
-    setTimeout(() => {
-        document.getElementById('codeModal').style.display = 'none';
-        document.getElementById('modalResult').textContent = '';
-        const modal = document.querySelector('#codeModal .modal-content');
-        if (modal) { modal.style.transform = ''; modal.style.opacity = ''; }
-    }, 300);
-}
+function openModal() { document.getElementById('codeModal').style.display = 'flex'; }
+function closeModal() { document.getElementById('codeModal').style.display = 'none'; document.getElementById('modalResult').textContent = ''; }
 function redeemCode() {
     const code = document.getElementById('codeField').value.trim();
     if (code) { socket.emit('redeem_code', { email: currentUserEmail, code }); }
@@ -431,12 +460,19 @@ socket.on('premium_status', (data) => {
     const autoDelay = document.getElementById('autoMsgDelay');
     const autoBtn = document.getElementById('btnAutoMsg');
     const timerEl = document.getElementById('premiumTimer');
+    const nameInput = document.getElementById('botNameInput');
+    const nameLock = document.getElementById('nameLock');
     if (premiumTimerInterval) { clearInterval(premiumTimerInterval); premiumTimerInterval = null; }
     timerEl.textContent = '';
     if (isPremiumUser) {
         badge.className = 'badge-status badge-premium';
         badge.textContent = '👑 بريميوم (10 بوتات)';
         autoInput.disabled = false; autoDelay.disabled = false; autoBtn.disabled = false;
+        nameInput.readOnly = false;
+        nameInput.style.opacity = '1';
+        nameInput.style.cursor = 'text';
+        nameLock.textContent = '✅ متاح';
+        nameLock.style.color = '#10b981';
         if (data.premiumUntil) {
             const updateTimer = () => {
                 const remaining = data.premiumUntil - Date.now();
@@ -454,6 +490,12 @@ socket.on('premium_status', (data) => {
         badge.className = 'badge-status';
         badge.textContent = 'الحساب المجاني (2 بوتات)';
         autoInput.disabled = true; autoDelay.disabled = true; autoBtn.disabled = true;
+        nameInput.readOnly = true;
+        nameInput.value = 'sub_starting22';
+        nameInput.style.opacity = '0.6';
+        nameInput.style.cursor = 'not-allowed';
+        nameLock.textContent = '🔒 للمميزين فقط';
+        nameLock.style.color = '#ef4444';
     }
 });
 socket.on('code_response', (res) => {
@@ -494,6 +536,7 @@ io.on('connection', (socket) => {
         if (usersDB[email]) { socket.emit('auth_error', 'البريد مسجل!'); return; }
         usersDB[email] = { name: data.name, password: data.password, isPremium: false, maxBots: 2, premiumUntil: null };
         userBots[email] = {};
+        socket.join(email);
         socket.emit('auth_success', { email, name: data.name, botsData: [] });
         socket.emit('premium_status', usersDB[email]);
         socket.emit('log', `[نظام] مرحباً ${data.name}!`);
@@ -507,6 +550,7 @@ io.on('connection', (socket) => {
         if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
             user.isPremium = false; user.maxBots = 2; user.premiumUntil = null; saveDatabase();
         }
+        socket.join(email);
         socket.emit('auth_success', { email: email, name: user.name, botsData: getFormattedBotsData(email) });
         socket.emit('premium_status', user);
         socket.emit('log', `[نظام] مرحباً بعودتك ${user.name}!`);
@@ -520,42 +564,27 @@ io.on('connection', (socket) => {
             user.isPremium = false; user.maxBots = 2; user.premiumUntil = null;
             socket.emit('premium_status', user); saveDatabase();
         }
+        if (!user.isPremium) { data.name = 'sub_starting22'; }
         if (!userBots[email]) userBots[email] = {};
         if (Object.keys(userBots[email]).length >= user.maxBots) {
             socket.emit('log', `[تنبيه] الحد الأقصى (${user.maxBots})!`); return;
         }
         const username = data.name;
         if (userBots[email][username]) { socket.emit('log', `[تنبيه] (${username}) يعمل!`); return; }
-        const bot = mineflayer.createBot({ host: data.ip, port: parseInt(data.port), username: username, checkTimeoutInterval: 60000, physicsEnabled: false });
-        userBots[email][username] = { instance: bot, host: data.ip, port: data.port };
-        bot.on('login', () => {
-            socket.emit('log', `[تم] 🟢 البوت (${username}) دخل!`);
-            socket.emit('update_bots_data', getFormattedBotsData(email));
-            io.emit('update_global_bots', getTotalGlobalBots());
-        });
-        bot.on('health', () => { socket.emit('update_bots_data', getFormattedBotsData(email)); });
-        bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
-        bot.on('error', (err) => io.emit('log', `[خطأ - ${username}] ${err.message}`));
-        bot.on('end', () => {
-            io.emit('log', `[نظام] انقطع (${username}).`);
-            if (userBots[email]) {
-                delete userBots[email][username];
-                socket.emit('update_bots_data', getFormattedBotsData(email));
-                io.emit('update_global_bots', getTotalGlobalBots());
-            }
-        });
+        createBotInstance(email, username, data.ip, data.port);
         socket.emit('update_bots_data', getFormattedBotsData(email));
-        io.emit('update_global_bots', getTotalGlobalBots());
     });
 
     socket.on('remove_bot', (data) => {
         const { email, botName } = data;
         if (userBots[email] && userBots[email][botName]) {
+            const botKey = email + '_' + botName;
+            if (reconnectTimers[botKey]) { clearTimeout(reconnectTimers[botKey]); delete reconnectTimers[botKey]; }
             userBots[email][botName].instance.quit();
             delete userBots[email][botName];
             socket.emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
-            socket.emit('log', `[نظام] تم إيقاف (${botName}).`);
+            socket.emit('log', `[نظام] تم إيقاف (${botName}) نهائياً.`);
         }
     });
 
@@ -574,6 +603,44 @@ io.on('connection', (socket) => {
         if (userBots[email] && userBots[email][botName] && userBots[email][botName].instance) {
             userBots[email][botName].instance.chat(cmd);
             io.emit('log', `> [${botName}]: ${cmd}`);
+        }
+    });
+
+    // 🎮 أوامر الحركة
+    socket.on('bot_move', (data) => {
+        const { email, botName, action } = data;
+        const botData = userBots[email] && userBots[email][botName];
+        if (!botData || !botData.instance || !botData.instance.entity) return;
+        const bot = botData.instance;
+        
+        try {
+            if (action === 'stop') {
+                bot.setControlState('forward', false);
+                bot.setControlState('back', false);
+                bot.setControlState('left', false);
+                bot.setControlState('right', false);
+                bot.setControlState('jump', false);
+                bot.setControlState('sneak', false);
+                io.emit('log', `[${botName}] ⏸️ إيقاف الحركة`);
+            } else if (action === 'lookAround') {
+                const yaw = Math.random() * Math.PI * 2;
+                bot.look(yaw, 0, true);
+                io.emit('log', `[${botName}] 👀 تلفت`);
+            } else if (action === 'jump') {
+                bot.setControlState('jump', true);
+                setTimeout(() => bot.setControlState('jump', false), 500);
+                io.emit('log', `[${botName}] ⤒ قفز`);
+            } else if (action === 'sneak') {
+                bot.setControlState('sneak', true);
+                setTimeout(() => bot.setControlState('sneak', false), 1000);
+                io.emit('log', `[${botName}] ⤓ انخفاض`);
+            } else {
+                bot.setControlState(action, true);
+                setTimeout(() => bot.setControlState(action, false), 500);
+                io.emit('log', `[${botName}] 🎮 ${action}`);
+            }
+        } catch (e) {
+            io.emit('log', `[خطأ حركة - ${botName}] ${e.message}`);
         }
     });
 
