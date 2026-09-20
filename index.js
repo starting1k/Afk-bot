@@ -9,8 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
-
-const SYSTEM_VERSION = '2.0.0';
+const SYSTEM_VERSION = '3.0.0';
 const SYSTEM_START_TIME = Date.now();
 
 const usersDB = {
@@ -63,17 +62,24 @@ function isPremiumActive(user) {
     return Date.now() < user.premiumUntil;
 }
 
-function createBotInstance(email, username, host, port) {
+function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
-    const bot = mineflayer.createBot({
+    const botOptions = {
         host: host, port: parseInt(port), username: username,
         checkTimeoutInterval: 60000, physicsEnabled: false, hideErrors: true
-    });
-    userBots[email][username] = { instance: bot, host: host, port: port };
+    };
+    if (version && version !== 'auto') {
+        botOptions.version = version;
+    }
+    const bot = mineflayer.createBot(botOptions);
+    userBots[email][username] = { 
+        instance: bot, host: host, port: port, 
+        version: version || 'auto', serverType: serverType || 'vanilla' 
+    };
     io.emit('update_global_bots', getTotalGlobalBots());
 
     bot.on('login', () => {
-        io.emit('log', `[✅] البوت (${username}) دخل السيرفر!`);
+        io.emit('log', `[✅] (${username}) دخل! [${version || 'auto'} - ${serverType || 'vanilla'}]`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
     bot.on('spawn', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
@@ -88,6 +94,8 @@ function createBotInstance(email, username, host, port) {
     bot.on('kicked', () => io.emit('log', `[⚠️] (${username}) طُرد`));
     bot.on('end', () => {
         io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
+        const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
+        const savedType = userBots[email] && userBots[email][username] ? userBots[email][username].serverType : serverType;
         if (userBots[email] && userBots[email][username]) {
             delete userBots[email][username];
             io.to(email).emit('update_bots_data', getFormattedBotsData(email));
@@ -101,7 +109,7 @@ function createBotInstance(email, username, host, port) {
             if (!user) return;
             if (Object.keys(userBots[email]).length >= user.maxBots) return;
             io.emit('log', `[🚀] إعادة تشغيل (${username})...`);
-            createBotInstance(email, username, host, port);
+            createBotInstance(email, username, host, port, savedVersion, savedType);
         }, 10000);
     });
     return bot;
@@ -133,7 +141,9 @@ body::after { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(15px); padding: 16px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.15); }
 .card label { font-size: 12px; color: #a855f7; display: block; margin-bottom: 6px; font-weight: bold; }
-.card input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.7); color: #fff; outline: none; }
+.card input, .card select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.7); color: #fff; outline: none; cursor: pointer; }
+.card input:focus, .card select:focus { border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.3); }
+.card select option { background: #0f172a; color: #fff; }
 .bots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-top: 10px; }
 .bot-card { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(15px); border: 2px solid rgba(16, 185, 129, 0.5); border-radius: 16px; padding: 15px; position: relative; }
 .bot-card-header { display: flex; align-items: center; gap: 15px; }
@@ -141,6 +151,7 @@ body::after { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0
 .bot-info { flex: 1; }
 .bot-info h4 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; }
 .stat-bar { font-size: 13px; margin: 3px 0; }
+.bot-tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: #a855f7; margin-right: 5px; }
 .btn-kick { background: #ef4444; color: white; padding: 6px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; border: none; position: absolute; top: 10px; left: 10px; }
 .bot-console { margin-top: 12px; display: flex; gap: 6px; }
 .bot-console input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(9, 13, 22, 0.8); color: #fff; font-size: 12px; outline: none; }
@@ -231,6 +242,41 @@ button:hover { transform: translateY(-2px); }
 </div>
 </div>
 
+<div class="grid" style="margin-top: 12px;">
+<div class="card">
+<label>📦 إصدار اللعبة <span id="versionLock" style="color: #ef4444; font-size: 10px;">🔒 للمميزين</span></label>
+<select id="gameVersion" disabled style="opacity: 0.6;">
+<option value="auto" selected>تلقائي (موصى به)</option>
+<option value="1.21.4">1.21.4</option>
+<option value="1.21.3">1.21.3</option>
+<option value="1.21.1">1.21.1</option>
+<option value="1.21">1.21</option>
+<option value="1.20.6">1.20.6</option>
+<option value="1.20.4">1.20.4</option>
+<option value="1.20.1">1.20.1</option>
+<option value="1.19.4">1.19.4</option>
+<option value="1.19.2">1.19.2</option>
+<option value="1.18.2">1.18.2</option>
+<option value="1.17.1">1.17.1</option>
+<option value="1.16.5">1.16.5</option>
+<option value="1.12.2">1.12.2</option>
+<option value="1.8.9">1.8.9</option>
+</select>
+</div>
+<div class="card">
+<label>🖥️ نوع السيرفر <span id="systemLock" style="color: #ef4444; font-size: 10px;">🔒 للمميزين</span></label>
+<select id="serverType" disabled style="opacity: 0.6;">
+<option value="vanilla" selected>Vanilla (الأصلي)</option>
+<option value="paper">Paper</option>
+<option value="spigot">Spigot</option>
+<option value="fabric">Fabric</option>
+<option value="forge">Forge</option>
+<option value="bukkit">Bukkit</option>
+<option value="purpur">Purpur</option>
+</select>
+</div>
+</div>
+
 <button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل البوت (24/7)</button>
 
 <div>
@@ -263,8 +309,6 @@ button:hover { transform: translateY(-2px); }
 <input type="text" id="msgInput" placeholder="أمر للكل..." onkeydown="if(event.key==='Enter') sendMsg()">
 <button type="button" onclick="sendMsg()">للجميع</button>
 <button type="button" class="btn-gift" onclick="openModal()">👑 بريميوم</button>
-<button type="button" id="btnVersion" onclick="showVersion()" style="background: linear-gradient(90deg, #8b5cf6, #6366f1); display: none;">📦 إصدار</button>
-<button type="button" id="btnSystem" onclick="showSystem()" style="background: linear-gradient(90deg, #06b6d4, #0891b2); display: none;">🖥️ النظام</button>
 <a href="https://www.youtube.com/@%D8%AD%D9%85%D8%B2%D8%A9%D8%B2%D9%8A%D8%A7%D8%AA-%D8%B86%D8%B4" target="_blank" class="btn-youtube">
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
 </a>
@@ -282,41 +326,6 @@ button:hover { transform: translateY(-2px); }
 <button type="button" onclick="closeModal()" style="background: #ef4444;">إلغاء</button>
 </div>
 <p id="modalResult" style="margin-top: 12px; font-size: 13px; font-weight: bold;"></p>
-</div>
-</div>
-
-<div class="modal" id="versionModal" style="display: none;">
-<div class="modal-content">
-<h3 style="color: #8b5cf6;">📦 إصدار النظام</h3>
-<div style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 20px; margin: 15px 0;">
-<div style="font-size: 48px; font-weight: 900; background: linear-gradient(90deg, #a855f7, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">v${SYSTEM_VERSION}</div>
-<p style="font-size: 12px; color: #94a3b8; margin-top: 8px;">STARTING SMP Control Center</p>
-</div>
-<div style="text-align: right; font-size: 13px; line-height: 1.8; background: rgba(15, 23, 42, 0.5); padding: 15px; border-radius: 10px;">
-<p>✨ <b style="color: #10b981;">الميزات:</b></p>
-<p>🔄 إعادة اتصال تلقائي 24/7</p>
-<p>🎮 أزرار حركة للبوتات</p>
-<p>⚡ أزرار سريعة + جماعية</p>
-<p>🎁 أكواد بريميوم (3 أنواع)</p>
-<p>💾 حفظ دائم للبيانات</p>
-<p>🎊 تأثيرات احتفال</p>
-</div>
-<div style="margin-top: 15px;">
-<button type="button" onclick="closeVersionModal()" style="background: #ef4444; width: 100%;">إغلاق</button>
-</div>
-</div>
-</div>
-
-<div class="modal" id="systemModal" style="display: none;">
-<div class="modal-content">
-<h3 style="color: #06b6d4;">🖥️ معلومات النظام</h3>
-<div id="systemInfo" style="text-align: right; font-size: 13px; line-height: 2; background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 15px; border-radius: 10px; margin: 15px 0;">
-<p>⏳ جاري التحميل...</p>
-</div>
-<div style="margin-top: 15px; display: flex; gap: 8px;">
-<button type="button" onclick="refreshSystem()" style="background: #06b6d4; flex: 1;">🔄 تحديث</button>
-<button type="button" onclick="closeSystemModal()" style="background: #ef4444; flex: 1;">إغلاق</button>
-</div>
 </div>
 </div>
 
@@ -377,6 +386,10 @@ function updateBotsCards(bots) {
                 '<img class="bot-avatar" src="https://mc-heads.net/avatar/' + bot.name + '/64">' +
                 '<div class="bot-info">' +
                     '<h4>' + bot.name + '</h4>' +
+                    '<div style="margin-bottom: 6px;">' +
+                        '<span class="bot-tag">📦 ' + bot.version + '</span>' +
+                        '<span class="bot-tag">🖥️ ' + bot.serverType + '</span>' +
+                    '</div>' +
                     '<div class="stat-bar">الحالة: <span style="color: #10b981;">' + bot.status + '</span></div>' +
                     '<div class="stat-bar">❤️ ' + bot.health + ' / 20</div>' +
                     '<div class="stat-bar">🍖 ' + bot.food + ' / 20</div>' +
@@ -421,7 +434,9 @@ function addBot() {
     const port = document.getElementById('portInput').value;
     let name = document.getElementById('botNameInput').value.trim();
     if (!name) { name = 'sub_starting22'; }
-    socket.emit('add_bot', { email: currentUserEmail, ip, port, name });
+    const version = document.getElementById('gameVersion').value;
+    const serverType = document.getElementById('serverType').value;
+    socket.emit('add_bot', { email: currentUserEmail, ip, port, name, version, serverType });
 }
 function sendMsg() {
     const input = document.getElementById('msgInput');
@@ -468,18 +483,6 @@ function redeemCode() {
     const code = document.getElementById('codeField').value.trim();
     if (code) { socket.emit('redeem_code', { email: currentUserEmail, code }); }
 }
-function showVersion() {
-    if (!isPremiumUser) { alert('🔒 للمميزين فقط!'); return; }
-    document.getElementById('versionModal').style.display = 'flex';
-}
-function closeVersionModal() { document.getElementById('versionModal').style.display = 'none'; }
-function showSystem() {
-    if (!isPremiumUser) { alert('🔒 للمميزين فقط!'); return; }
-    document.getElementById('systemModal').style.display = 'flex';
-    socket.emit('get_system_info', { email: currentUserEmail });
-}
-function closeSystemModal() { document.getElementById('systemModal').style.display = 'none'; }
-function refreshSystem() { socket.emit('get_system_info', { email: currentUserEmail }); }
 const socket = io();
 const chat = document.getElementById('chat');
 socket.on('auth_success', (data) => {
@@ -498,18 +501,6 @@ socket.on('log', (msg) => {
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
 });
-socket.on('system_info', (data) => {
-    const info = document.getElementById('systemInfo');
-    info.innerHTML = 
-        '<p>📦 <b>الإصدار:</b> <span style="color: #a855f7;">v' + data.version + '</span></p>' +
-        '<p>⏱️ <b>وقت التشغيل:</b> <span style="color: #10b981;">' + data.uptime + '</span></p>' +
-        '<p>💾 <b>الذاكرة:</b> <span style="color: #f59e0b;">' + data.memory + '</span></p>' +
-        '<p>🤖 <b>بوتاتك:</b> <span style="color: #38bdf8;">' + data.userBots + '</span></p>' +
-        '<p>🌐 <b>البوتات الكلية:</b> <span style="color: #38bdf8;">' + data.totalBots + '</span></p>' +
-        '<p>👥 <b>المستخدمين:</b> <span style="color: #38bdf8;">' + data.totalUsers + '</span></p>' +
-        '<p>🟢 <b>الحالة:</b> <span style="color: #10b981;">يعمل بشكل سليم</span></p>' +
-        '<p>📡 <b>Node.js:</b> <span style="color: #94a3b8;">' + data.nodeVersion + '</span></p>';
-});
 socket.on('premium_status', (data) => {
     isPremiumUser = data.isPremium;
     const badge = document.getElementById('statusBadge');
@@ -519,8 +510,10 @@ socket.on('premium_status', (data) => {
     const timerEl = document.getElementById('premiumTimer');
     const nameInput = document.getElementById('botNameInput');
     const nameLock = document.getElementById('nameLock');
-    const btnVersion = document.getElementById('btnVersion');
-    const btnSystem = document.getElementById('btnSystem');
+    const gameVersion = document.getElementById('gameVersion');
+    const serverType = document.getElementById('serverType');
+    const versionLock = document.getElementById('versionLock');
+    const systemLock = document.getElementById('systemLock');
     if (premiumTimerInterval) { clearInterval(premiumTimerInterval); premiumTimerInterval = null; }
     timerEl.textContent = '';
     if (isPremiumUser) {
@@ -532,8 +525,16 @@ socket.on('premium_status', (data) => {
         nameInput.style.cursor = 'text';
         nameLock.textContent = '✅ متاح';
         nameLock.style.color = '#10b981';
-        btnVersion.style.display = 'inline-flex';
-        btnSystem.style.display = 'inline-flex';
+        gameVersion.disabled = false;
+        serverType.disabled = false;
+        gameVersion.style.opacity = '1';
+        serverType.style.opacity = '1';
+        gameVersion.style.cursor = 'pointer';
+        serverType.style.cursor = 'pointer';
+        versionLock.textContent = '✅ متاح';
+        versionLock.style.color = '#10b981';
+        systemLock.textContent = '✅ متاح';
+        systemLock.style.color = '#10b981';
         if (data.premiumUntil) {
             const updateTimer = () => {
                 const remaining = data.premiumUntil - Date.now();
@@ -557,8 +558,18 @@ socket.on('premium_status', (data) => {
         nameInput.style.cursor = 'not-allowed';
         nameLock.textContent = '🔒 للمميزين فقط';
         nameLock.style.color = '#ef4444';
-        btnVersion.style.display = 'none';
-        btnSystem.style.display = 'none';
+        gameVersion.disabled = true;
+        serverType.disabled = true;
+        gameVersion.value = 'auto';
+        serverType.value = 'vanilla';
+        gameVersion.style.opacity = '0.6';
+        serverType.style.opacity = '0.6';
+        gameVersion.style.cursor = 'not-allowed';
+        serverType.style.cursor = 'not-allowed';
+        versionLock.textContent = '🔒 للمميزين';
+        versionLock.style.color = '#ef4444';
+        systemLock.textContent = '🔒 للمميزين';
+        systemLock.style.color = '#ef4444';
     }
 });
 socket.on('code_response', (res) => {
@@ -582,11 +593,14 @@ function getFormattedBotsData(email) {
     if (!userBots[email]) return [];
     return Object.keys(userBots[email]).map(name => {
         const b = userBots[email][name].instance;
+        const data = userBots[email][name];
         return {
             name: name,
             status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
             health: b && b.health ? Math.round(b.health) : 20,
-            food: b && b.food ? Math.round(b.food) : 20
+            food: b && b.food ? Math.round(b.food) : 20,
+            version: data.version || 'auto',
+            serverType: data.serverType || 'vanilla'
         };
     });
 }
@@ -634,7 +648,10 @@ io.on('connection', (socket) => {
         }
         const username = data.name;
         if (userBots[email][username]) { socket.emit('log', `[تنبيه] (${username}) يعمل!`); return; }
-        createBotInstance(email, username, data.ip, data.port);
+        const userVersion = user.isPremium ? (data.version || 'auto') : 'auto';
+        const userServerType = user.isPremium ? (data.serverType || 'vanilla') : 'vanilla';
+        io.emit('log', `[📦] تشغيل (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
+        createBotInstance(email, username, data.ip, data.port, userVersion, userServerType);
         socket.emit('update_bots_data', getFormattedBotsData(email));
     });
 
@@ -722,31 +739,6 @@ io.on('connection', (socket) => {
             }, delayMs);
             io.emit('log', `[بريميوم] نشر تلقائي كل ${delayMs / 1000} ثانية.`);
         } else { io.emit('log', `[بريميوم] تم الإيقاف.`); }
-    });
-
-    socket.on('get_system_info', (data) => {
-        const email = data.email;
-        if (!email || !usersDB[email] || !isPremiumActive(usersDB[email])) {
-            socket.emit('log', '[تنبيه] معلومات النظام للبريميوم فقط!');
-            return;
-        }
-        const uptimeMs = Date.now() - SYSTEM_START_TIME;
-        const days = Math.floor(uptimeMs / 86400000);
-        const hours = Math.floor((uptimeMs % 86400000) / 3600000);
-        const mins = Math.floor((uptimeMs % 3600000) / 60000);
-        const secs = Math.floor((uptimeMs % 60000) / 1000);
-        const uptimeStr = days + 'ي ' + hours + 'س ' + mins + 'د ' + secs + 'ث';
-        const memMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2) + ' MB';
-        const userBotsCount = userBots[email] ? Object.keys(userBots[email]).length : 0;
-        socket.emit('system_info', {
-            version: SYSTEM_VERSION,
-            uptime: uptimeStr,
-            memory: memMB,
-            userBots: userBotsCount,
-            totalBots: getTotalGlobalBots(),
-            totalUsers: Object.keys(usersDB).length,
-            nodeVersion: process.version
-        });
     });
 
     socket.on('redeem_code', (data) => {
