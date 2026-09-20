@@ -9,8 +9,11 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
-const SYSTEM_VERSION = '3.0.0';
+const SYSTEM_VERSION = '3.1.0';
 const SYSTEM_START_TIME = Date.now();
+
+// 🔐 كلمة السر الافتراضية للبوتات (غيّرها!)
+const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
     'zyathamza3@gmail.com': { name: 'Hamza', password: 'Starting1k', isPremium: true, maxBots: 10, premiumUntil: null }
@@ -78,20 +81,77 @@ function createBotInstance(email, username, host, port, version, serverType) {
     };
     io.emit('update_global_bots', getTotalGlobalBots());
 
+    // 🔐 متغيرات حالة تسجيل الدخول
+    let hasTriedLogin = false;
+    let hasTriedRegister = false;
+    let isLoggedIn = false;
+
     bot.on('login', () => {
         io.emit('log', `[✅] (${username}) دخل! [${version || 'auto'} - ${serverType || 'vanilla'}]`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
+    
     bot.on('spawn', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
     bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
     bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
+
+    // 🔐 نظام تسجيل الدخول التلقائي
+    bot.on('message', (jsonMsg) => {
+        const msg = jsonMsg.toString().toLowerCase();
+        
+        // 🆕 طلب تسجيل (register)
+        if (!hasTriedRegister && !isLoggedIn && 
+            (msg.includes('/register') || msg.includes('please register') || msg.includes('register with') || 
+             msg.includes('سجل') || msg.includes('التسجيل') || msg.includes('كلمة السر'))) {
+            hasTriedRegister = true;
+            setTimeout(() => {
+                bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
+                io.emit('log', `[🔐] (${username}) جاري التسجيل...`);
+            }, 1500);
+        }
+        
+        // 🔑 طلب تسجيل دخول (login)
+        if (!hasTriedLogin && !isLoggedIn && 
+            (msg.includes('/login') || msg.includes('please login') || msg.includes('login with') || 
+             msg.includes('سجل دخول') || msg.includes('تسجيل الدخول') || msg.includes('دخول'))) {
+            hasTriedLogin = true;
+            setTimeout(() => {
+                bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                io.emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
+            }, 1500);
+        }
+        
+        // ✅ تأكيد الدخول
+        if (!isLoggedIn && 
+            (msg.includes('logged in') || msg.includes('successfully') || msg.includes('welcome') ||
+             msg.includes('تم تسجيل الدخول') || msg.includes('مرحباً') || msg.includes('أهلاً'))) {
+            isLoggedIn = true;
+            io.emit('log', `[✅] (${username}) تم تسجيل الدخول بنجاح!`);
+        }
+        
+        // ⚠️ رسائل خطأ
+        if (msg.includes('wrong password') || msg.includes('كلمة المرور خاطئة') || msg.includes('incorrect password')) {
+            io.emit('log', `[❌] (${username}) كلمة المرور خاطئة! غيّرها في الكود.`);
+        }
+        if (msg.includes('already registered') || msg.includes('مسجل مسبقاً')) {
+            io.emit('log', `[ℹ️] (${username}) مسجل مسبقاً - محاولة دخول...`);
+            // حاول تسجيل الدخول بعد الرسالة
+            if (!hasTriedLogin) {
+                hasTriedLogin = true;
+                setTimeout(() => {
+                    bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                }, 1500);
+            }
+        }
+    });
+
     bot.on('error', (err) => {
         const msg = err.message || '';
         if (!msg.includes('ECONNREFUSED') && !msg.includes('TIMEOUT')) {
             io.emit('log', `[خطأ - ${username}] ${msg}`);
         }
     });
-    bot.on('kicked', () => io.emit('log', `[⚠️] (${username}) طُرد`));
+    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد: ${reason}`));
     bot.on('end', () => {
         io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
         const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
@@ -248,16 +308,13 @@ button:hover { transform: translateY(-2px); }
 <select id="gameVersion" disabled style="opacity: 0.6;">
 <option value="auto" selected>تلقائي (موصى به)</option>
 <option value="1.21.4">1.21.4</option>
-<option value="1.21.3">1.21.3</option>
 <option value="1.21.1">1.21.1</option>
 <option value="1.21">1.21</option>
 <option value="1.20.6">1.20.6</option>
 <option value="1.20.4">1.20.4</option>
 <option value="1.20.1">1.20.1</option>
 <option value="1.19.4">1.19.4</option>
-<option value="1.19.2">1.19.2</option>
 <option value="1.18.2">1.18.2</option>
-<option value="1.17.1">1.17.1</option>
 <option value="1.16.5">1.16.5</option>
 <option value="1.12.2">1.12.2</option>
 <option value="1.8.9">1.8.9</option>
@@ -266,18 +323,18 @@ button:hover { transform: translateY(-2px); }
 <div class="card">
 <label>🖥️ نوع السيرفر <span id="systemLock" style="color: #ef4444; font-size: 10px;">🔒 للمميزين</span></label>
 <select id="serverType" disabled style="opacity: 0.6;">
-<option value="vanilla" selected>Vanilla (الأصلي)</option>
+<option value="vanilla" selected>Vanilla</option>
 <option value="paper">Paper</option>
 <option value="spigot">Spigot</option>
 <option value="fabric">Fabric</option>
-<option value="forge">Forge</option>
+<option value="forge">Forge (مش مدعوم بالكامل)</option>
 <option value="bukkit">Bukkit</option>
 <option value="purpur">Purpur</option>
 </select>
 </div>
 </div>
 
-<button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل البوت (24/7)</button>
+<button type="button" onclick="addBot()" style="background: linear-gradient(90deg, #10b981, #059669);">➕ تشغيل البوت (24/7 + Login تلقائي)</button>
 
 <div>
 <h3 style="color: #a855f7; margin-bottom: 10px;">🤖 البوتات (كونسول + أزرار لكل بوت):</h3>
@@ -777,5 +834,7 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`📦 Version: ${SYSTEM_VERSION}`);
+    console.log('🔐 Auto Login System: مُفعل');
+    console.log(`🔑 Default Password: ${DEFAULT_BOT_PASSWORD}`);
     console.log('🎁 Codes: STARTING_LIFE / STARTING_5DAYS / STARTING_KING');
 });
