@@ -36,16 +36,22 @@ function loadDatabase() {
             const data = fs.readJsonSync(DB_FILE);
             if (data.usersDB) Object.assign(usersDB, data.usersDB);
             if (data.promoCodes) Object.assign(promoCodes, data.promoCodes);
-            console.log('✅ تم تحميل البيانات');
-        } else { console.log('📝 بدء جديد'); }
-    } catch (e) { console.log('⚠️ خطأ:', e.message); }
+            console.log('✅ تم تحميل البيانات بنجاح');
+        } else { 
+            console.log('📝 بدء إنشاء قاعدة بيانات جديدة'); 
+        }
+    } catch (e) { 
+        console.log('⚠️ خطأ في تحميل قاعدة البيانات:', e.message); 
+    }
 }
 
 function saveDatabase() {
     try {
         fs.ensureDirSync('/data');
         fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
-    } catch (e) { console.log('⚠️ خطأ حفظ:', e.message); }
+    } catch (e) { 
+        console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', e.message); 
+    }
 }
 
 setInterval(saveDatabase, 30000);
@@ -55,12 +61,14 @@ loadDatabase();
 
 function getTotalGlobalBots() {
     let total = 0;
-    Object.keys(userBots).forEach(email => { total += Object.keys(userBots[email] || {}).length; });
+    Object.keys(userBots).forEach(email => { 
+        total += Object.keys(userBots[email] || {}).length; 
+    });
     return total;
 }
 
 function isPremiumActive(user) {
-    if (!user.isPremium) return false;
+    if (!user || !user.isPremium) return false;
     if (user.premiumUntil === null || user.premiumUntil === undefined) return true;
     return Date.now() < user.premiumUntil;
 }
@@ -68,15 +76,15 @@ function isPremiumActive(user) {
 function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
     
-    // إصلاح خيارات الاتصال وتخطي الأخطاء
+    // إصلاح خيارات الاتصال لسيرفرات Aternos والنسخ المكركة
     const botOptions = {
         host: host,
         port: parseInt(port) || 25565,
         username: username,
-        auth: 'offline', // ضروي لسيرفرات Aternos والمكركة
+        auth: 'offline',
         checkTimeoutInterval: 60000,
         physicsEnabled: false,
-        hideErrors: false // تفعيل رؤية الأخطاء للتشخيص
+        hideErrors: false
     };
 
     if (version && version !== 'auto') {
@@ -87,10 +95,11 @@ function createBotInstance(email, username, host, port, version, serverType) {
     try {
         bot = mineflayer.createBot(botOptions);
     } catch (err) {
-        io.emit('log', `[❌] فشل إنشاء البوت: ${err.message}`);
+        io.to(email).emit('log', `[❌] فشل إنشاء البوت (${username}): ${err.message}`);
         return null;
     }
 
+    if (!userBots[email]) userBots[email] = {};
     userBots[email][username] = { 
         instance: bot, host: host, port: port, 
         version: version || 'auto', serverType: serverType || 'vanilla' 
@@ -102,19 +111,24 @@ function createBotInstance(email, username, host, port, version, serverType) {
     let isLoggedIn = false;
 
     bot.on('login', () => {
-        io.emit('log', `[✅] (${username}) دخل السيرفر! جاري الانتظار...`);
+        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر! جاري الانتظار...`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
     
     bot.on('spawn', () => { 
-        io.emit('log', `[🎮] (${username}) ظهر داخل العالم!`);
+        io.to(email).emit('log', `[🎮] (${username}) ظهر داخل العالم!`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
     });
 
-    bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
-    bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
+    bot.on('health', () => { 
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
+    });
 
-    // معالجة الرسائل
+    bot.on('chat', (u, msg) => {
+        io.to(email).emit('log', `[${username}] <${u}> ${msg}`);
+    });
+
+    // معالجة الرسائل التلقائية وتسجيل الدخول
     const handleServerMessage = (rawMsg) => {
         if (!rawMsg) return;
         const msg = rawMsg.toLowerCase();
@@ -123,10 +137,12 @@ function createBotInstance(email, username, host, port, version, serverType) {
             (msg.includes('/register') || msg.includes('register') || msg.includes('سجل') || msg.includes('التسجيل'))) {
             hasTriedRegister = true;
             setTimeout(() => {
-                if (bot && bot.chat) {
-                    bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
-                    io.emit('log', `[🔐] (${username}) جاري التسجيل...`);
-                }
+                try {
+                    if (bot && bot.chat) {
+                        bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
+                        io.to(email).emit('log', `[🔐] (${username}) جاري التسجيل تلقائياً...`);
+                    }
+                } catch(e){}
             }, 1500);
         }
         
@@ -134,23 +150,27 @@ function createBotInstance(email, username, host, port, version, serverType) {
             (msg.includes('/login') || msg.includes('login') || msg.includes('سجل دخول') || msg.includes('دخول'))) {
             hasTriedLogin = true;
             setTimeout(() => {
-                if (bot && bot.chat) {
-                    bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
-                    io.emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
-                }
+                try {
+                    if (bot && bot.chat) {
+                        bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                        io.to(email).emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
+                    }
+                } catch(e){}
             }, 1500);
         }
         
         if (!isLoggedIn && (msg.includes('logged in') || msg.includes('successfully') || msg.includes('تم تسجيل الدخول') || msg.includes('مرحباً'))) {
             isLoggedIn = true;
-            io.emit('log', `[✅] (${username}) تم تسجيل الدخول بنجاح!`);
+            io.to(email).emit('log', `[✅] (${username}) تم تسجيل الدخول بنجاح!`);
         }
 
         if (msg.includes('already registered') || msg.includes('مسجل مسبقاً')) {
             if (!hasTriedLogin) {
                 hasTriedLogin = true;
                 setTimeout(() => {
-                    if (bot && bot.chat) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                    try {
+                        if (bot && bot.chat) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                    } catch(e){}
                 }, 1500);
             }
         }
@@ -165,17 +185,17 @@ function createBotInstance(email, username, host, port, version, serverType) {
     });
 
     bot.on('error', (err) => {
-        io.emit('log', `[❌ خطأ - ${username}] ${err.message || err}`);
+        io.to(email).emit('log', `[❌ خطأ - ${username}] ${err.message || err}`);
     });
 
     bot.on('kicked', (reason) => {
         let parsedReason = reason;
         try { parsedReason = JSON.parse(reason).text || reason; } catch(e){}
-        io.emit('log', `[⚠️] (${username}) طُرد: ${parsedReason}`);
+        io.to(email).emit('log', `[⚠️] (${username}) طُرد: ${parsedReason}`);
     });
 
     bot.on('end', (reason) => {
-        io.emit('log', `[🔄] (${username}) انقطع الاتصال (${reason || 'غير معروف'}) - إعادة الاتصال بعد 10 ثواني...`);
+        io.to(email).emit('log', `[🔄] (${username}) انقطع الاتصال (${reason || 'غير معروف'}) - إعادة الاتصال بعد 10 ثواني...`);
         const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
         const savedType = userBots[email] && userBots[email][username] ? userBots[email][username].serverType : serverType;
         
@@ -192,7 +212,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
             const user = usersDB[email];
             if (!user) return;
             if (Object.keys(userBots[email]).length >= user.maxBots) return;
-            io.emit('log', `[🚀] إعادة تشغيل (${username})...`);
+            io.to(email).emit('log', `[🚀] إعادة تشغيل (${username})...`);
             createBotInstance(email, username, host, port, savedVersion, savedType);
         }, 10000);
     });
@@ -436,6 +456,7 @@ function switchTab(tab) {
 let currentUserEmail = null;
 let isPremiumUser = false;
 let premiumTimerInterval = null;
+
 function submitLogin() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value.trim();
@@ -567,6 +588,7 @@ function redeemCode() {
 }
 const socket = io();
 const chat = document.getElementById('chat');
+
 socket.on('auth_success', (data) => {
     currentUserEmail = data.email;
     document.getElementById('authScreen').style.display = 'none';
@@ -596,8 +618,10 @@ socket.on('premium_status', (data) => {
     const serverType = document.getElementById('serverType');
     const versionLock = document.getElementById('versionLock');
     const systemLock = document.getElementById('systemLock');
+    
     if (premiumTimerInterval) { clearInterval(premiumTimerInterval); premiumTimerInterval = null; }
     timerEl.textContent = '';
+    
     if (isPremiumUser) {
         badge.className = 'badge-status badge-premium';
         badge.textContent = '👑 بريميوم (10 بوتات)';
@@ -617,6 +641,7 @@ socket.on('premium_status', (data) => {
         versionLock.style.color = '#10b981';
         systemLock.textContent = '✅ متاح';
         systemLock.style.color = '#10b981';
+        
         if (data.premiumUntil) {
             const updateTimer = () => {
                 const remaining = data.premiumUntil - Date.now();
@@ -692,20 +717,20 @@ io.on('connection', (socket) => {
 
     socket.on('user_register', (data) => {
         const email = data.email.toLowerCase();
-        if (usersDB[email]) { socket.emit('auth_error', 'البريد مسجل!'); return; }
+        if (usersDB[email]) { socket.emit('auth_error', 'البريد مسجل مسبقاً!'); return; }
         usersDB[email] = { name: data.name, password: data.password, isPremium: false, maxBots: 2, premiumUntil: null };
         userBots[email] = {};
         socket.join(email);
         socket.emit('auth_success', { email, name: data.name, botsData: [] });
         socket.emit('premium_status', usersDB[email]);
-        socket.emit('log', `[نظام] مرحباً ${data.name}!`);
+        socket.emit('log', `[نظام] أهلاً بك ${data.name}!`);
         saveDatabase();
     });
 
     socket.on('user_login', (data) => {
         const email = data.email.toLowerCase();
         const user = usersDB[email];
-        if (!user || user.password !== data.password) { socket.emit('auth_error', 'البيانات غير صحيحة!'); return; }
+        if (!user || user.password !== data.password) { socket.emit('auth_error', 'بيانات الدخول غير صحيحة!'); return; }
         if (user.isPremium && user.premiumUntil && Date.now() >= user.premiumUntil) {
             user.isPremium = false; user.maxBots = 2; user.premiumUntil = null; saveDatabase();
         }
@@ -726,13 +751,13 @@ io.on('connection', (socket) => {
         if (!user.isPremium) { data.name = 'sub_starting22'; }
         if (!userBots[email]) userBots[email] = {};
         if (Object.keys(userBots[email]).length >= user.maxBots) {
-            socket.emit('log', `[تنبيه] الحد الأقصى (${user.maxBots})!`); return;
+            socket.emit('log', `[تنبيه] لقد وصلت للحد الأقصى المسموح به (${user.maxBots})!`); return;
         }
         const username = data.name;
-        if (userBots[email][username]) { socket.emit('log', `[تنبيه] (${username}) يعمل!`); return; }
+        if (userBots[email][username]) { socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`); return; }
         const userVersion = user.isPremium ? (data.version || 'auto') : 'auto';
         const userServerType = user.isPremium ? (data.serverType || 'vanilla') : 'vanilla';
-        io.emit('log', `[📦] تشغيل (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
+        socket.emit('log', `[📦] جاري بدء البوت (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
         createBotInstance(email, username, data.ip, data.port, userVersion, userServerType);
         socket.emit('update_bots_data', getFormattedBotsData(email));
     });
@@ -742,7 +767,9 @@ io.on('connection', (socket) => {
         if (userBots[email] && userBots[email][botName]) {
             const botKey = email + '_' + botName;
             if (reconnectTimers[botKey]) { clearTimeout(reconnectTimers[botKey]); delete reconnectTimers[botKey]; }
-            if (userBots[email][botName].instance) userBots[email][botName].instance.quit();
+            try {
+                if (userBots[email][botName].instance) userBots[email][botName].instance.quit();
+            } catch(e){}
             delete userBots[email][botName];
             socket.emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
@@ -754,17 +781,21 @@ io.on('connection', (socket) => {
         const email = data.email, cmd = data.cmd;
         if (userBots[email]) {
             Object.keys(userBots[email]).forEach(botName => {
-                if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
+                try {
+                    if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
+                } catch(e){}
             });
-            io.emit('log', `> [الكل]: ${cmd}`);
+            socket.emit('log', `> [الأمر للكل]: ${cmd}`);
         }
     });
 
     socket.on('command_single', (data) => {
         const { email, botName, cmd } = data;
         if (userBots[email] && userBots[email][botName] && userBots[email][botName].instance) {
-            userBots[email][botName].instance.chat(cmd);
-            io.emit('log', `> [${botName}]: ${cmd}`);
+            try {
+                userBots[email][botName].instance.chat(cmd);
+                socket.emit('log', `> [${botName}]: ${cmd}`);
+            } catch(e){}
         }
     });
 
@@ -781,33 +812,33 @@ io.on('connection', (socket) => {
                 bot.setControlState('right', false);
                 bot.setControlState('jump', false);
                 bot.setControlState('sneak', false);
-                io.emit('log', `[${botName}] ⏸️ إيقاف الحركة`);
+                socket.emit('log', `[${botName}] ⏸️ تم إيقاف الحركة`);
             } else if (action === 'lookAround') {
                 const yaw = Math.random() * Math.PI * 2;
                 bot.look(yaw, 0, true);
-                io.emit('log', `[${botName}] 👀 تلفت`);
+                socket.emit('log', `[${botName}] 👀 نظر حوله`);
             } else if (action === 'jump') {
                 bot.setControlState('jump', true);
-                setTimeout(() => bot.setControlState('jump', false), 500);
-                io.emit('log', `[${botName}] ⤒ قفز`);
+                setTimeout(() => { try { bot.setControlState('jump', false); } catch(e){} }, 500);
+                socket.emit('log', `[${botName}] ⤒ قفز`);
             } else if (action === 'sneak') {
                 bot.setControlState('sneak', true);
-                setTimeout(() => bot.setControlState('sneak', false), 1000);
-                io.emit('log', `[${botName}] ⤓ انخفاض`);
+                setTimeout(() => { try { bot.setControlState('sneak', false); } catch(e){} }, 1000);
+                socket.emit('log', `[${botName}] ⤓ انخفاض`);
             } else {
                 bot.setControlState(action, true);
-                setTimeout(() => bot.setControlState(action, false), 500);
-                io.emit('log', `[${botName}] 🎮 ${action}`);
+                setTimeout(() => { try { bot.setControlState(action, false); } catch(e){} }, 500);
+                socket.emit('log', `[${botName}] 🎮 حركة: ${action}`);
             }
         } catch (e) {
-            io.emit('log', `[خطأ حركة - ${botName}] ${e.message}`);
+            socket.emit('log', `[خطأ حركة - ${botName}] ${e.message}`);
         }
     });
 
     socket.on('set_auto_message', (data) => {
         const email = data.email;
         if (!email || !usersDB[email] || !isPremiumActive(usersDB[email])) {
-            socket.emit('log', '[تنبيه] للبريميوم فقط!'); return;
+            socket.emit('log', '[تنبيه] خاصية النشر التلقائي للبريميوم فقط!'); return;
         }
         if (autoMessageIntervals[email]) clearInterval(autoMessageIntervals[email]);
         if (data.msg && data.msg.trim() !== '') {
@@ -815,22 +846,24 @@ io.on('connection', (socket) => {
             autoMessageIntervals[email] = setInterval(() => {
                 if (userBots[email]) {
                     Object.keys(userBots[email]).forEach(botName => {
-                        if (userBots[email][botName].instance) userBots[email][botName].instance.chat(data.msg);
+                        try {
+                            if (userBots[email][botName].instance) userBots[email][botName].instance.chat(data.msg);
+                        } catch(e){}
                     });
                 }
             }, delayMs);
-            io.emit('log', `[بريميوم] نشر تلقائي كل ${delayMs / 1000} ثانية.`);
-        } else { io.emit('log', `[بريميوم] تم الإيقاف.`); }
+            socket.emit('log', `[بريميوم] تفعيل الرسالة التلقائية كل ${delayMs / 1000} ثانية.`);
+        } else { socket.emit('log', `[بريميوم] تم إيقاف الرسائل التلقائية.`); }
     });
 
     socket.on('redeem_code', (data) => {
         const email = data.email;
         const code = data.code.trim().toUpperCase();
-        if (!usersDB[email]) { socket.emit('code_response', { success: false, message: 'سجّل دخول!' }); return; }
+        if (!usersDB[email]) { socket.emit('code_response', { success: false, message: 'قم بتسجيل الدخول أولاً!' }); return; }
         const item = promoCodes[code];
         if (!item) { socket.emit('code_response', { success: false, message: '❌ الكود غير صحيح!' }); return; }
-        if (item.usedBy.includes(email)) { socket.emit('code_response', { success: false, message: '⚠️ استخدمته من قبل!' }); return; }
-        if (item.usedCount >= item.maxUses) { socket.emit('code_response', { success: false, message: '❌ انتهى!' }); return; }
+        if (item.usedBy.includes(email)) { socket.emit('code_response', { success: false, message: '⚠️ لقد استخدمت هذا الكود سابقاً!' }); return; }
+        if (item.usedCount >= item.maxUses) { socket.emit('code_response', { success: false, message: '❌ الكود انتهى واستُخدم بالكامل!' }); return; }
         item.usedCount++;
         item.usedBy.push(email);
         usersDB[email].isPremium = true;
@@ -845,12 +878,12 @@ io.on('connection', (socket) => {
             durationText = `⏳ ${item.days} أيام`;
         }
         const remaining = item.maxUses - item.usedCount;
-        let msg = `✅ تم التفعيل! (${durationText})`;
-        if (remaining > 0) { msg += ` | متبقي ${remaining}`; }
-        else { msg += ` | 🎉 آخر مستخدم!`; celebrationType = 'epic'; }
+        let msg = `✅ تم التفعيل بنجاح! (${durationText})`;
+        if (remaining > 0) { msg += ` | متبقي ${remaining} استخدامات`; }
+        else { msg += ` | 🎉 أنت آخر من استخدم هذا الكود!`; celebrationType = 'epic'; }
         socket.emit('premium_status', usersDB[email]);
         socket.emit('code_response', { success: true, message: msg, type: celebrationType });
-        io.emit('log', `[تحديث] 🎉 (${email}) صار VIP! (${durationText})`);
+        socket.emit('log', `[تحديث] 🎉 تم ترقية حسابك إلى VIP! (${durationText})`);
         saveDatabase();
     });
 });
