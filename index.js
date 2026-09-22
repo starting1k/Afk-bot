@@ -12,7 +12,7 @@ const DB_FILE = '/data/database.json';
 const SYSTEM_VERSION = '3.1.0';
 const SYSTEM_START_TIME = Date.now();
 
-// 🔐 كلمة السر الافتراضية للبوتات (غيّرها!)
+// 🔐 كلمة السر الافتراضية للبوتات
 const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
@@ -67,100 +67,124 @@ function isPremiumActive(user) {
 
 function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
+    
+    // إصلاح خيارات الاتصال وتخطي الأخطاء
     const botOptions = {
-        host: host, port: parseInt(port), username: username,
-        checkTimeoutInterval: 60000, physicsEnabled: false, hideErrors: true
+        host: host,
+        port: parseInt(port) || 25565,
+        username: username,
+        auth: 'offline', // ضروي لسيرفرات Aternos والمكركة
+        checkTimeoutInterval: 60000,
+        physicsEnabled: false,
+        hideErrors: false // تفعيل رؤية الأخطاء للتشخيص
     };
+
     if (version && version !== 'auto') {
         botOptions.version = version;
     }
-    const bot = mineflayer.createBot(botOptions);
+
+    let bot;
+    try {
+        bot = mineflayer.createBot(botOptions);
+    } catch (err) {
+        io.emit('log', `[❌] فشل إنشاء البوت: ${err.message}`);
+        return null;
+    }
+
     userBots[email][username] = { 
         instance: bot, host: host, port: port, 
         version: version || 'auto', serverType: serverType || 'vanilla' 
     };
     io.emit('update_global_bots', getTotalGlobalBots());
 
-    // 🔐 متغيرات حالة تسجيل الدخول
     let hasTriedLogin = false;
     let hasTriedRegister = false;
     let isLoggedIn = false;
 
     bot.on('login', () => {
-        io.emit('log', `[✅] (${username}) دخل! [${version || 'auto'} - ${serverType || 'vanilla'}]`);
+        io.emit('log', `[✅] (${username}) دخل السيرفر! جاري الانتظار...`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
     
-    bot.on('spawn', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
+    bot.on('spawn', () => { 
+        io.emit('log', `[🎮] (${username}) ظهر داخل العالم!`);
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
+    });
+
     bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
     bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
 
-    // 🔐 نظام تسجيل الدخول التلقائي
-    bot.on('message', (jsonMsg) => {
-        const msg = jsonMsg.toString().toLowerCase();
-        
-        // 🆕 طلب تسجيل (register)
+    // معالجة الرسائل
+    const handleServerMessage = (rawMsg) => {
+        if (!rawMsg) return;
+        const msg = rawMsg.toLowerCase();
+
         if (!hasTriedRegister && !isLoggedIn && 
-            (msg.includes('/register') || msg.includes('please register') || msg.includes('register with') || 
-             msg.includes('سجل') || msg.includes('التسجيل') || msg.includes('كلمة السر'))) {
+            (msg.includes('/register') || msg.includes('register') || msg.includes('سجل') || msg.includes('التسجيل'))) {
             hasTriedRegister = true;
             setTimeout(() => {
-                bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
-                io.emit('log', `[🔐] (${username}) جاري التسجيل...`);
+                if (bot && bot.chat) {
+                    bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
+                    io.emit('log', `[🔐] (${username}) جاري التسجيل...`);
+                }
             }, 1500);
         }
         
-        // 🔑 طلب تسجيل دخول (login)
         if (!hasTriedLogin && !isLoggedIn && 
-            (msg.includes('/login') || msg.includes('please login') || msg.includes('login with') || 
-             msg.includes('سجل دخول') || msg.includes('تسجيل الدخول') || msg.includes('دخول'))) {
+            (msg.includes('/login') || msg.includes('login') || msg.includes('سجل دخول') || msg.includes('دخول'))) {
             hasTriedLogin = true;
             setTimeout(() => {
-                bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
-                io.emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
+                if (bot && bot.chat) {
+                    bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                    io.emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
+                }
             }, 1500);
         }
         
-        // ✅ تأكيد الدخول
-        if (!isLoggedIn && 
-            (msg.includes('logged in') || msg.includes('successfully') || msg.includes('welcome') ||
-             msg.includes('تم تسجيل الدخول') || msg.includes('مرحباً') || msg.includes('أهلاً'))) {
+        if (!isLoggedIn && (msg.includes('logged in') || msg.includes('successfully') || msg.includes('تم تسجيل الدخول') || msg.includes('مرحباً'))) {
             isLoggedIn = true;
             io.emit('log', `[✅] (${username}) تم تسجيل الدخول بنجاح!`);
         }
-        
-        // ⚠️ رسائل خطأ
-        if (msg.includes('wrong password') || msg.includes('كلمة المرور خاطئة') || msg.includes('incorrect password')) {
-            io.emit('log', `[❌] (${username}) كلمة المرور خاطئة! غيّرها في الكود.`);
-        }
+
         if (msg.includes('already registered') || msg.includes('مسجل مسبقاً')) {
-            io.emit('log', `[ℹ️] (${username}) مسجل مسبقاً - محاولة دخول...`);
-            // حاول تسجيل الدخول بعد الرسالة
             if (!hasTriedLogin) {
                 hasTriedLogin = true;
                 setTimeout(() => {
-                    bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                    if (bot && bot.chat) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
                 }, 1500);
             }
         }
+    };
+
+    bot.on('message', (jsonMsg) => {
+        handleServerMessage(jsonMsg.toString());
+    });
+
+    bot.on('messagestr', (messagestr) => {
+        handleServerMessage(messagestr);
     });
 
     bot.on('error', (err) => {
-        const msg = err.message || '';
-        if (!msg.includes('ECONNREFUSED') && !msg.includes('TIMEOUT')) {
-            io.emit('log', `[خطأ - ${username}] ${msg}`);
-        }
+        io.emit('log', `[❌ خطأ - ${username}] ${err.message || err}`);
     });
-    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد: ${reason}`));
-    bot.on('end', () => {
-        io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
+
+    bot.on('kicked', (reason) => {
+        let parsedReason = reason;
+        try { parsedReason = JSON.parse(reason).text || reason; } catch(e){}
+        io.emit('log', `[⚠️] (${username}) طُرد: ${parsedReason}`);
+    });
+
+    bot.on('end', (reason) => {
+        io.emit('log', `[🔄] (${username}) انقطع الاتصال (${reason || 'غير معروف'}) - إعادة الاتصال بعد 10 ثواني...`);
         const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
         const savedType = userBots[email] && userBots[email][username] ? userBots[email][username].serverType : serverType;
+        
         if (userBots[email] && userBots[email][username]) {
             delete userBots[email][username];
             io.to(email).emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
         }
+        
         if (reconnectTimers[botKey]) clearTimeout(reconnectTimers[botKey]);
         reconnectTimers[botKey] = setTimeout(() => {
             if (!userBots[email]) userBots[email] = {};
@@ -172,6 +196,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
             createBotInstance(email, username, host, port, savedVersion, savedType);
         }, 10000);
     });
+
     return bot;
 }
 
@@ -649,7 +674,7 @@ socket.on('code_response', (res) => {
 function getFormattedBotsData(email) {
     if (!userBots[email]) return [];
     return Object.keys(userBots[email]).map(name => {
-        const b = userBots[email][name].instance;
+        const b = userBots[email][name] ? userBots[email][name].instance : null;
         const data = userBots[email][name];
         return {
             name: name,
@@ -717,7 +742,7 @@ io.on('connection', (socket) => {
         if (userBots[email] && userBots[email][botName]) {
             const botKey = email + '_' + botName;
             if (reconnectTimers[botKey]) { clearTimeout(reconnectTimers[botKey]); delete reconnectTimers[botKey]; }
-            userBots[email][botName].instance.quit();
+            if (userBots[email][botName].instance) userBots[email][botName].instance.quit();
             delete userBots[email][botName];
             socket.emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
@@ -746,7 +771,7 @@ io.on('connection', (socket) => {
     socket.on('bot_move', (data) => {
         const { email, botName, action } = data;
         const botData = userBots[email] && userBots[email][botName];
-        if (!botData || !botData.instance || !botData.instance.entity) return;
+        if (!botData || !botData.instance) return;
         const bot = botData.instance;
         try {
             if (action === 'stop') {
