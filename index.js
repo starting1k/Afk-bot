@@ -12,11 +12,20 @@ const DB_FILE = '/data/database.json';
 const SYSTEM_VERSION = '3.1.0';
 const SYSTEM_START_TIME = Date.now();
 
+// 🛡️ حماية السيرفر من الانهيار (Crash Protection)
+process.on('uncaughtException', (err) => {
+    console.error('[❌ خطأ غير متوقع]:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[❌ رفض غير معالج]:', reason);
+});
+
 // 🔐 كلمة السر الافتراضية للبوتات
 const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
-    'zyathamza3@gmail.com': { name: 'Hamza', password: 'Starting1k', isPremium: true, maxBots: 10, premiumUntil: null }
+    'zyathamza3@gmail.com': { name: 'Hamza', password: 'Starting1k', isPremium: true, maxBots: 100, premiumUntil: null }
 }; 
 const userBots = {}; 
 const autoMessageIntervals = {}; 
@@ -624,7 +633,7 @@ socket.on('premium_status', (data) => {
     
     if (isPremiumUser) {
         badge.className = 'badge-status badge-premium';
-        badge.textContent = '👑 بريميوم (10 بوتات)';
+        badge.textContent = '👑 بريميوم (100 بوتات)';
         autoInput.disabled = false; autoDelay.disabled = false; autoBtn.disabled = false;
         nameInput.readOnly = false;
         nameInput.style.opacity = '1';
@@ -867,7 +876,7 @@ io.on('connection', (socket) => {
         item.usedCount++;
         item.usedBy.push(email);
         usersDB[email].isPremium = true;
-        usersDB[email].maxBots = 10;
+        usersDB[email].maxBots = 100;
         let durationText = '', celebrationType = 'temporary';
         if (item.type === 'lifetime') {
             usersDB[email].premiumUntil = null;
