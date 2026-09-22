@@ -8,10 +8,12 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "mineflayer": "^4.20.1",
+    "fs-extra": "^11.2.0",
     "minecraft-data": "^3.66.0",
+    "mineflayer": "^4.20.1",
     "mineflayer-auto-eat": "^3.3.0",
-    "mineflayer-pathfinder": "^2.4.5"
+    "mineflayer-pathfinder": "^2.4.5",
+    "socket.io": "^4.7.5"
   },
   "engines": {
     "node": ">=18.0.0"
