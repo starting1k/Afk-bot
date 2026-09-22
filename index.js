@@ -9,26 +9,31 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
-const SYSTEM_VERSION = '3.1.0';
+const SYSTEM_VERSION = '3.2.0';
 const SYSTEM_START_TIME = Date.now();
 
-// 🛡️ حماية السيرفر من الانهيار (Crash Protection)
+// 🛡️ حماية السيرفر من الانهيار
 process.on('uncaughtException', (err) => {
     console.error('[❌ خطأ غير متوقع]:', err.message || err);
 });
-
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
     console.error('[❌ رفض غير معالج]:', reason);
 });
 
-// 🔐 كلمة السر الافتراضية للبوتات
+// 🔐 كلمة السر الافتراضية
 const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
-    'zyathamza3@gmail.com': { name: 'Hamza', password: 'Starting1k', isPremium: true, maxBots: 100, premiumUntil: null }
-}; 
-const userBots = {}; 
-const autoMessageIntervals = {}; 
+    'zyathamza3@gmail.com': {
+        name: 'Hamza',
+        password: 'Starting1k',
+        isPremium: true,
+        maxBots: 100,
+        premiumUntil: null
+    }
+};
+const userBots = {};
+const autoMessageIntervals = {};
 const reconnectTimers = {};
 
 let serverConfig = { host: 'StArTiNG1K.ATeRNoS.Me', port: 25565 };
@@ -46,11 +51,11 @@ function loadDatabase() {
             if (data.usersDB) Object.assign(usersDB, data.usersDB);
             if (data.promoCodes) Object.assign(promoCodes, data.promoCodes);
             console.log('✅ تم تحميل البيانات بنجاح');
-        } else { 
-            console.log('📝 بدء إنشاء قاعدة بيانات جديدة'); 
+        } else {
+            console.log('📝 بدء إنشاء قاعدة بيانات جديدة');
         }
-    } catch (e) { 
-        console.log('⚠️ خطأ في تحميل قاعدة البيانات:', e.message); 
+    } catch (e) {
+        console.log('⚠️ خطأ في تحميل قاعدة البيانات:', e.message);
     }
 }
 
@@ -58,8 +63,8 @@ function saveDatabase() {
     try {
         fs.ensureDirSync('/data');
         fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
-    } catch (e) { 
-        console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', e.message); 
+    } catch (e) {
+        console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', e.message);
     }
 }
 
@@ -70,8 +75,8 @@ loadDatabase();
 
 function getTotalGlobalBots() {
     let total = 0;
-    Object.keys(userBots).forEach(email => { 
-        total += Object.keys(userBots[email] || {}).length; 
+    Object.keys(userBots).forEach(email => {
+        total += Object.keys(userBots[email] || {}).length;
     });
     return total;
 }
@@ -82,21 +87,43 @@ function isPremiumActive(user) {
     return Date.now() < user.premiumUntil;
 }
 
+// ✅ التحقق من الإصدار المدعوم
+function getSupportedVersion(requested) {
+    if (!requested || requested === 'auto') return false;
+    const supported = [
+        '1.21.4', '1.21.3', '1.21.1', '1.21',
+        '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
+        '1.19.4', '1.19.3', '1.19.2', '1.19',
+        '1.18.2', '1.18.1', '1.18',
+        '1.17.1', '1.17',
+        '1.16.5', '1.16.4', '1.16.3', '1.16.2', '1.16.1',
+        '1.15.2', '1.15.1', '1.15',
+        '1.14.4', '1.14.3', '1.14.2', '1.14.1', '1.14',
+        '1.13.2', '1.13.1', '1.13',
+        '1.12.2', '1.12.1', '1.12',
+        '1.11.2', '1.11.1', '1.11',
+        '1.10.2', '1.10.1', '1.10',
+        '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9',
+        '1.8.9', '1.8.8', '1.8'
+    ];
+    return supported.includes(requested);
+}
+
 function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
-    
-    // إصلاح خيارات الاتصال لسيرفرات Aternos والنسخ المكركة
+
+    // ✅ إصلاح خيارات الاتصال
     const botOptions = {
         host: host,
         port: parseInt(port) || 25565,
         username: username,
         auth: 'offline',
         checkTimeoutInterval: 60000,
-        physicsEnabled: false,
         hideErrors: false
     };
 
-    if (version && version !== 'auto') {
+    // ✅ فقط نمرر version إذا كان صالحاً وليس auto
+    if (getSupportedVersion(version)) {
         botOptions.version = version;
     }
 
@@ -109,9 +136,12 @@ function createBotInstance(email, username, host, port, version, serverType) {
     }
 
     if (!userBots[email]) userBots[email] = {};
-    userBots[email][username] = { 
-        instance: bot, host: host, port: port, 
-        version: version || 'auto', serverType: serverType || 'vanilla' 
+    userBots[email][username] = {
+        instance: bot,
+        host: host,
+        port: port,
+        version: version || 'auto',
+        serverType: serverType || 'vanilla'
     };
     io.emit('update_global_bots', getTotalGlobalBots());
 
@@ -120,29 +150,29 @@ function createBotInstance(email, username, host, port, version, serverType) {
     let isLoggedIn = false;
 
     bot.on('login', () => {
-        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر! جاري الانتظار...`);
+        const detectedVersion = bot.version || 'unknown';
+        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر! إصدار: ${detectedVersion}`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
-    
-    bot.on('spawn', () => { 
+
+    bot.on('spawn', () => {
         io.to(email).emit('log', `[🎮] (${username}) ظهر داخل العالم!`);
-        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
 
-    bot.on('health', () => { 
-        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
+    bot.on('health', () => {
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
 
     bot.on('chat', (u, msg) => {
         io.to(email).emit('log', `[${username}] <${u}> ${msg}`);
     });
 
-    // معالجة الرسائل التلقائية وتسجيل الدخول
     const handleServerMessage = (rawMsg) => {
         if (!rawMsg) return;
         const msg = rawMsg.toLowerCase();
 
-        if (!hasTriedRegister && !isLoggedIn && 
+        if (!hasTriedRegister && !isLoggedIn &&
             (msg.includes('/register') || msg.includes('register') || msg.includes('سجل') || msg.includes('التسجيل'))) {
             hasTriedRegister = true;
             setTimeout(() => {
@@ -151,11 +181,11 @@ function createBotInstance(email, username, host, port, version, serverType) {
                         bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
                         io.to(email).emit('log', `[🔐] (${username}) جاري التسجيل تلقائياً...`);
                     }
-                } catch(e){}
+                } catch (e) {}
             }, 1500);
         }
-        
-        if (!hasTriedLogin && !isLoggedIn && 
+
+        if (!hasTriedLogin && !isLoggedIn &&
             (msg.includes('/login') || msg.includes('login') || msg.includes('سجل دخول') || msg.includes('دخول'))) {
             hasTriedLogin = true;
             setTimeout(() => {
@@ -164,10 +194,10 @@ function createBotInstance(email, username, host, port, version, serverType) {
                         bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
                         io.to(email).emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
                     }
-                } catch(e){}
+                } catch (e) {}
             }, 1500);
         }
-        
+
         if (!isLoggedIn && (msg.includes('logged in') || msg.includes('successfully') || msg.includes('تم تسجيل الدخول') || msg.includes('مرحباً'))) {
             isLoggedIn = true;
             io.to(email).emit('log', `[✅] (${username}) تم تسجيل الدخول بنجاح!`);
@@ -179,41 +209,56 @@ function createBotInstance(email, username, host, port, version, serverType) {
                 setTimeout(() => {
                     try {
                         if (bot && bot.chat) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
-                    } catch(e){}
+                    } catch (e) {}
                 }, 1500);
             }
         }
     };
 
     bot.on('message', (jsonMsg) => {
-        handleServerMessage(jsonMsg.toString());
+        try {
+            handleServerMessage(jsonMsg.toString());
+        } catch (e) {}
     });
 
     bot.on('messagestr', (messagestr) => {
-        handleServerMessage(messagestr);
+        try {
+            handleServerMessage(messagestr);
+        } catch (e) {}
     });
 
     bot.on('error', (err) => {
-        io.to(email).emit('log', `[❌ خطأ - ${username}] ${err.message || err}`);
+        const errMsg = err && err.message ? err.message : String(err);
+        // ✅ تجاهل أخطاء البروتوكول لتجنب السبام
+        if (errMsg.includes('Unsupported protocol version') ||
+            errMsg.includes('minecraftVersion')) {
+            io.to(email).emit('log', `[⚠️] (${username}) مشكلة في الإصدار - تأكد من اختيار الإصدار الصحيح`);
+        } else {
+            io.to(email).emit('log', `[❌ خطأ - ${username}] ${errMsg}`);
+        }
     });
 
     bot.on('kicked', (reason) => {
         let parsedReason = reason;
-        try { parsedReason = JSON.parse(reason).text || reason; } catch(e){}
+        try {
+            const parsed = JSON.parse(reason);
+            parsedReason = parsed.text || parsed.toString() || reason;
+        } catch (e) {}
         io.to(email).emit('log', `[⚠️] (${username}) طُرد: ${parsedReason}`);
     });
 
     bot.on('end', (reason) => {
         io.to(email).emit('log', `[🔄] (${username}) انقطع الاتصال (${reason || 'غير معروف'}) - إعادة الاتصال بعد 10 ثواني...`);
+
         const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
         const savedType = userBots[email] && userBots[email][username] ? userBots[email][username].serverType : serverType;
-        
+
         if (userBots[email] && userBots[email][username]) {
             delete userBots[email][username];
             io.to(email).emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
         }
-        
+
         if (reconnectTimers[botKey]) clearTimeout(reconnectTimers[botKey]);
         reconnectTimers[botKey] = setTimeout(() => {
             if (!userBots[email]) userBots[email] = {};
@@ -298,7 +343,6 @@ button:hover { transform: translateY(-2px); }
 .eye-btn { position: absolute; left: 10px; background: transparent !important; border: none !important; font-size: 18px; cursor: pointer; padding: 5px !important; user-select: none; box-shadow: none !important; }
 .tab-btn { padding: 8px 18px; background: rgba(51, 65, 85, 0.6); color: #fff; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.2); cursor: pointer; }
 .tab-btn.active { background: linear-gradient(90deg, #6366f1, #a855f7); font-weight: bold; border-color: transparent; }
-@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @media (max-width: 600px) { body { padding: 12px; } .header h1 { font-size: 20px; } }
 </style>
 </head>
@@ -627,10 +671,10 @@ socket.on('premium_status', (data) => {
     const serverType = document.getElementById('serverType');
     const versionLock = document.getElementById('versionLock');
     const systemLock = document.getElementById('systemLock');
-    
+
     if (premiumTimerInterval) { clearInterval(premiumTimerInterval); premiumTimerInterval = null; }
     timerEl.textContent = '';
-    
+
     if (isPremiumUser) {
         badge.className = 'badge-status badge-premium';
         badge.textContent = '👑 بريميوم (100 بوتات)';
@@ -650,7 +694,7 @@ socket.on('premium_status', (data) => {
         versionLock.style.color = '#10b981';
         systemLock.textContent = '✅ متاح';
         systemLock.style.color = '#10b981';
-        
+
         if (data.premiumUntil) {
             const updateTimer = () => {
                 const remaining = data.premiumUntil - Date.now();
@@ -708,8 +752,8 @@ socket.on('code_response', (res) => {
 function getFormattedBotsData(email) {
     if (!userBots[email]) return [];
     return Object.keys(userBots[email]).map(name => {
-        const b = userBots[email][name] ? userBots[email][name].instance : null;
         const data = userBots[email][name];
+        const b = data ? data.instance : null;
         return {
             name: name,
             status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
@@ -766,7 +810,7 @@ io.on('connection', (socket) => {
         if (userBots[email][username]) { socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`); return; }
         const userVersion = user.isPremium ? (data.version || 'auto') : 'auto';
         const userServerType = user.isPremium ? (data.serverType || 'vanilla') : 'vanilla';
-        socket.emit('log', `[📦] جاري بدء البوت (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
+        socket.emit('log', `[📦] تشغيل (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
         createBotInstance(email, username, data.ip, data.port, userVersion, userServerType);
         socket.emit('update_bots_data', getFormattedBotsData(email));
     });
@@ -778,7 +822,7 @@ io.on('connection', (socket) => {
             if (reconnectTimers[botKey]) { clearTimeout(reconnectTimers[botKey]); delete reconnectTimers[botKey]; }
             try {
                 if (userBots[email][botName].instance) userBots[email][botName].instance.quit();
-            } catch(e){}
+            } catch (e) {}
             delete userBots[email][botName];
             socket.emit('update_bots_data', getFormattedBotsData(email));
             io.emit('update_global_bots', getTotalGlobalBots());
@@ -792,7 +836,7 @@ io.on('connection', (socket) => {
             Object.keys(userBots[email]).forEach(botName => {
                 try {
                     if (userBots[email][botName].instance) userBots[email][botName].instance.chat(cmd);
-                } catch(e){}
+                } catch (e) {}
             });
             socket.emit('log', `> [الأمر للكل]: ${cmd}`);
         }
@@ -804,7 +848,7 @@ io.on('connection', (socket) => {
             try {
                 userBots[email][botName].instance.chat(cmd);
                 socket.emit('log', `> [${botName}]: ${cmd}`);
-            } catch(e){}
+            } catch (e) {}
         }
     });
 
@@ -828,15 +872,15 @@ io.on('connection', (socket) => {
                 socket.emit('log', `[${botName}] 👀 نظر حوله`);
             } else if (action === 'jump') {
                 bot.setControlState('jump', true);
-                setTimeout(() => { try { bot.setControlState('jump', false); } catch(e){} }, 500);
+                setTimeout(() => { try { bot.setControlState('jump', false); } catch (e) {} }, 500);
                 socket.emit('log', `[${botName}] ⤒ قفز`);
             } else if (action === 'sneak') {
                 bot.setControlState('sneak', true);
-                setTimeout(() => { try { bot.setControlState('sneak', false); } catch(e){} }, 1000);
+                setTimeout(() => { try { bot.setControlState('sneak', false); } catch (e) {} }, 1000);
                 socket.emit('log', `[${botName}] ⤓ انخفاض`);
             } else {
                 bot.setControlState(action, true);
-                setTimeout(() => { try { bot.setControlState(action, false); } catch(e){} }, 500);
+                setTimeout(() => { try { bot.setControlState(action, false); } catch (e) {} }, 500);
                 socket.emit('log', `[${botName}] 🎮 حركة: ${action}`);
             }
         } catch (e) {
@@ -857,7 +901,7 @@ io.on('connection', (socket) => {
                     Object.keys(userBots[email]).forEach(botName => {
                         try {
                             if (userBots[email][botName].instance) userBots[email][botName].instance.chat(data.msg);
-                        } catch(e){}
+                        } catch (e) {}
                     });
                 }
             }, delayMs);
