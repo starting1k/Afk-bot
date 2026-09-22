@@ -9,17 +9,25 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
-const SYSTEM_VERSION = '3.3.0';
+const SYSTEM_VERSION = '3.3.1';
 
 // 🛡️ حماية السيرفر من الانهيار
 process.on('uncaughtException', (err) => {
-    console.error('[❌ خطأ غير متوقع]:', err.message || err);
-});
-process.on('unhandledRejection', (reason) => {
-    console.error('[❌ رفض غير معالج]:', reason);
+    let msg;
+    try { msg = err && err.message ? err.message : String(err); } catch (e) { msg = 'unknown'; }
+    console.error('[❌ خطأ غير متوقع]:', msg);
 });
 
-// 🔐 كلمة السر الافتراضية للبوتات
+process.on('unhandledRejection', (reason) => {
+    let msg;
+    try {
+        if (typeof reason === 'string') msg = reason;
+        else if (reason && reason.message) msg = reason.message;
+        else msg = JSON.stringify(reason);
+    } catch (e) { msg = 'unknown rejection'; }
+    console.error('[❌ رفض غير معالج]:', msg);
+});
+
 const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
@@ -35,7 +43,7 @@ const userBots = {};
 const autoMessageIntervals = {};
 const reconnectTimers = {};
 
-let serverConfig = { host: 'StArTiNG1K.ATeRNoS.Me', port: 25565 };
+const serverConfig = { host: 'StArTiNG1K.ATeRNoS.Me', port: 25565 };
 
 const promoCodes = {
     'STARTING_LIFE': { type: 'lifetime', days: 0, maxUses: 2, usedCount: 0, usedBy: [] },
@@ -43,8 +51,8 @@ const promoCodes = {
     'STARTING_KING': { type: 'lifetime', days: 0, maxUses: 1, usedCount: 0, usedBy: [] }
 };
 
-// ✅ قائمة الإصدارات النصية الصالحة فقط (بدون auto)
-const VALID_VERSIONS = [
+// قائمة الإصدارات المدعومة (نصية فقط)
+const SUPPORTED_VERSIONS = [
     '1.21.4', '1.21.3', '1.21.1', '1.21',
     '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
     '1.19.4', '1.19.3', '1.19.2', '1.19',
@@ -61,6 +69,22 @@ const VALID_VERSIONS = [
     '1.8.9', '1.8.8', '1.8'
 ];
 
+// ✅ دالة آمنة لتحويل أي قيمة إلى نص
+function safeString(val, fallback = 'غير معروف') {
+    try {
+        if (val === null || val === undefined) return fallback;
+        if (typeof val === 'string') return val;
+        if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+        if (typeof val === 'object') {
+            if (val.text) return String(val.text);
+            if (val.message) return String(val.message);
+            if (val.toString && val.toString() !== '[object Object]') return val.toString();
+            try { return JSON.stringify(val); } catch (e) { return fallback; }
+        }
+        return String(val);
+    } catch (e) { return fallback; }
+}
+
 function loadDatabase() {
     try {
         if (fs.existsSync(DB_FILE)) {
@@ -72,7 +96,7 @@ function loadDatabase() {
             console.log('📝 بدء إنشاء قاعدة بيانات جديدة');
         }
     } catch (e) {
-        console.log('⚠️ خطأ في تحميل قاعدة البيانات:', e.message);
+        console.log('⚠️ خطأ في تحميل قاعدة البيانات:', safeString(e.message, e));
     }
 }
 
@@ -81,7 +105,7 @@ function saveDatabase() {
         fs.ensureDirSync('/data');
         fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
     } catch (e) {
-        console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', e.message);
+        console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', safeString(e.message, e));
     }
 }
 
@@ -104,17 +128,15 @@ function isPremiumActive(user) {
     return Date.now() < user.premiumUntil;
 }
 
-// ✅ التحقق من أن الإصدار نصي صالح
 function isValidVersion(v) {
-    if (!v || typeof v !== 'string') return false;
-    if (v === 'auto' || v === '-1' || v === '777') return false;
-    return VALID_VERSIONS.includes(v);
+    if (typeof v !== 'string') return false;
+    if (v === 'auto' || v === '' || v === '-1') return false;
+    return SUPPORTED_VERSIONS.includes(v);
 }
 
 function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
 
-    // 🎯 الخيارات الأساسية
     const botOptions = {
         host: host,
         port: parseInt(port) || 25565,
@@ -124,20 +146,18 @@ function createBotInstance(email, username, host, port, version, serverType) {
         hideErrors: false
     };
 
-    // ✅ نمرر version فقط إذا كان نصياً صالحاً
-    // إذا كانت "auto" أو غير صالحة → لا نمررها، mineflayer سيكتشف تلقائياً
     if (isValidVersion(version)) {
         botOptions.version = version;
-        console.log(`[🔧] (${username}) استخدام إصدار محدد: ${version}`);
+        console.log(`[VERSION] استخدام إصدار محدد: ${version}`);
     } else {
-        console.log(`[🔧] (${username}) اكتشاف تلقائي للإصدار (auto)`);
+        console.log(`[VERSION] اكتشاف تلقائي (تم تجاهل القيمة: ${safeString(version)})`);
     }
 
     let bot;
     try {
         bot = mineflayer.createBot(botOptions);
     } catch (err) {
-        io.to(email).emit('log', `[❌] فشل إنشاء البوت (${username}): ${err.message}`);
+        io.to(email).emit('log', `[❌] فشل إنشاء البوت (${username}): ${safeString(err.message, err)}`);
         return null;
     }
 
@@ -146,7 +166,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
         instance: bot,
         host: host,
         port: port,
-        version: version || 'auto',
+        version: botOptions.version || 'auto',
         serverType: serverType || 'vanilla'
     };
     io.emit('update_global_bots', getTotalGlobalBots());
@@ -156,7 +176,8 @@ function createBotInstance(email, username, host, port, version, serverType) {
     let isLoggedIn = false;
 
     bot.on('login', () => {
-        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر!`);
+        const detectedVersion = safeString(bot.version, 'unknown');
+        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر! إصدار: ${detectedVersion}`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
 
@@ -170,12 +191,13 @@ function createBotInstance(email, username, host, port, version, serverType) {
     });
 
     bot.on('chat', (u, msg) => {
-        io.to(email).emit('log', `[${username}] <${u}> ${msg}`);
+        io.to(email).emit('log', `[${username}] <${safeString(u)}> ${safeString(msg)}`);
     });
 
     const handleServerMessage = (rawMsg) => {
         if (!rawMsg) return;
-        const msg = rawMsg.toLowerCase();
+        const msg = safeString(rawMsg, '').toLowerCase();
+        if (!msg) return;
 
         if (!hasTriedRegister && !isLoggedIn &&
             (msg.includes('/register') || msg.includes('register') || msg.includes('سجل') || msg.includes('التسجيل'))) {
@@ -229,21 +251,30 @@ function createBotInstance(email, username, host, port, version, serverType) {
     });
 
     bot.on('error', (err) => {
-        const errMsg = err && err.message ? err.message : String(err);
-        io.to(email).emit('log', `[❌ خطأ - ${username}] ${errMsg}`);
+        let errMsg;
+        try {
+            if (typeof err === 'string') errMsg = err;
+            else if (err && err.message) errMsg = err.message;
+            else errMsg = safeString(err, 'unknown error');
+        } catch (e) { errMsg = 'unknown error'; }
+
+        if (errMsg.includes('Unsupported protocol version') ||
+            errMsg.includes('unsupported/unknown protocol') ||
+            errMsg.includes('minecraftVersion')) {
+            io.to(email).emit('log', `[⚠️] (${username}) مشكلة بروتوكول — جرّب اختيار إصدار محدد أو انتظر تحديث المكتبة`);
+        } else {
+            io.to(email).emit('log', `[❌ خطأ - ${username}] ${errMsg}`);
+        }
     });
 
     bot.on('kicked', (reason) => {
-        let parsedReason = reason;
-        try {
-            const parsed = JSON.parse(reason);
-            parsedReason = parsed.text || parsed.toString() || reason;
-        } catch (e) {}
+        const parsedReason = safeString(reason, 'غير معروف');
         io.to(email).emit('log', `[⚠️] (${username}) طُرد: ${parsedReason}`);
     });
 
     bot.on('end', (reason) => {
-        io.to(email).emit('log', `[🔄] (${username}) انقطع الاتصال (${reason || 'غير معروف'}) - إعادة الاتصال بعد 10 ثواني...`);
+        const reasonText = safeString(reason, 'غير معروف');
+        io.to(email).emit('log', `[🔄] (${username}) انقطع الاتصال (${reasonText}) - إعادة الاتصال بعد 10 ثواني...`);
 
         const savedVersion = userBots[email] && userBots[email][username] ? userBots[email][username].version : version;
         const savedType = userBots[email] && userBots[email][username] ? userBots[email][username].serverType : serverType;
@@ -267,22 +298,6 @@ function createBotInstance(email, username, host, port, version, serverType) {
     });
 
     return bot;
-}
-
-function getFormattedBotsData(email) {
-    if (!userBots[email]) return [];
-    return Object.keys(userBots[email]).map(name => {
-        const data = userBots[email][name];
-        const b = data ? data.instance : null;
-        return {
-            name: name,
-            status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
-            health: b && b.health ? Math.round(b.health) : 20,
-            food: b && b.food ? Math.round(b.food) : 20,
-            version: data.version || 'auto',
-            serverType: data.serverType || 'vanilla'
-        };
-    });
 }
 
 app.get('/', (req, res) => {
@@ -760,6 +775,22 @@ socket.on('code_response', (res) => {
 </html>`);
 });
 
+function getFormattedBotsData(email) {
+    if (!userBots[email]) return [];
+    return Object.keys(userBots[email]).map(name => {
+        const data = userBots[email][name];
+        const b = data ? data.instance : null;
+        return {
+            name: name,
+            status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
+            health: b && b.health ? Math.round(b.health) : 20,
+            food: b && b.food ? Math.round(b.food) : 20,
+            version: data.version || 'auto',
+            serverType: data.serverType || 'vanilla'
+        };
+    });
+}
+
 io.on('connection', (socket) => {
     socket.emit('update_global_bots', getTotalGlobalBots());
 
@@ -803,10 +834,8 @@ io.on('connection', (socket) => {
         }
         const username = data.name;
         if (userBots[email][username]) { socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`); return; }
-
-        const userVersion = user.isPremium ? (data.version || 'auto') : 'auto';
-        const userServerType = user.isPremium ? (data.serverType || 'vanilla') : 'vanilla';
-
+        const userVersion = data.version || 'auto';
+        const userServerType = data.serverType || 'vanilla';
         socket.emit('log', `[📦] تشغيل (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
         createBotInstance(email, username, data.ip, data.port, userVersion, userServerType);
         socket.emit('update_bots_data', getFormattedBotsData(email));
@@ -881,7 +910,7 @@ io.on('connection', (socket) => {
                 socket.emit('log', `[${botName}] 🎮 حركة: ${action}`);
             }
         } catch (e) {
-            socket.emit('log', `[خطأ حركة - ${botName}] ${e.message}`);
+            socket.emit('log', `[خطأ حركة - ${botName}] ${safeString(e.message, e)}`);
         }
     });
 
