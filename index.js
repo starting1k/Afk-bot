@@ -9,8 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
-const SYSTEM_VERSION = '3.2.0';
-const SYSTEM_START_TIME = Date.now();
+const SYSTEM_VERSION = '3.3.0';
 
 // 🛡️ حماية السيرفر من الانهيار
 process.on('uncaughtException', (err) => {
@@ -20,7 +19,7 @@ process.on('unhandledRejection', (reason) => {
     console.error('[❌ رفض غير معالج]:', reason);
 });
 
-// 🔐 كلمة السر الافتراضية
+// 🔐 كلمة السر الافتراضية للبوتات
 const DEFAULT_BOT_PASSWORD = 'Starting1k2024';
 
 const usersDB = {
@@ -43,6 +42,24 @@ const promoCodes = {
     'STARTING_5DAYS': { type: 'temporary', days: 5, maxUses: 10, usedCount: 0, usedBy: [] },
     'STARTING_KING': { type: 'lifetime', days: 0, maxUses: 1, usedCount: 0, usedBy: [] }
 };
+
+// ✅ قائمة الإصدارات النصية الصالحة فقط (بدون auto)
+const VALID_VERSIONS = [
+    '1.21.4', '1.21.3', '1.21.1', '1.21',
+    '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
+    '1.19.4', '1.19.3', '1.19.2', '1.19',
+    '1.18.2', '1.18.1', '1.18',
+    '1.17.1', '1.17',
+    '1.16.5', '1.16.4', '1.16.3', '1.16.2', '1.16.1',
+    '1.15.2', '1.15.1', '1.15',
+    '1.14.4', '1.14.3', '1.14.2', '1.14.1', '1.14',
+    '1.13.2', '1.13.1', '1.13',
+    '1.12.2', '1.12.1', '1.12',
+    '1.11.2', '1.11.1', '1.11',
+    '1.10.2', '1.10.1', '1.10',
+    '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9',
+    '1.8.9', '1.8.8', '1.8'
+];
 
 function loadDatabase() {
     try {
@@ -87,32 +104,17 @@ function isPremiumActive(user) {
     return Date.now() < user.premiumUntil;
 }
 
-// ✅ التحقق من الإصدار المدعوم
-function getSupportedVersion(requested) {
-    if (!requested || requested === 'auto') return false;
-    const supported = [
-        '1.21.4', '1.21.3', '1.21.1', '1.21',
-        '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
-        '1.19.4', '1.19.3', '1.19.2', '1.19',
-        '1.18.2', '1.18.1', '1.18',
-        '1.17.1', '1.17',
-        '1.16.5', '1.16.4', '1.16.3', '1.16.2', '1.16.1',
-        '1.15.2', '1.15.1', '1.15',
-        '1.14.4', '1.14.3', '1.14.2', '1.14.1', '1.14',
-        '1.13.2', '1.13.1', '1.13',
-        '1.12.2', '1.12.1', '1.12',
-        '1.11.2', '1.11.1', '1.11',
-        '1.10.2', '1.10.1', '1.10',
-        '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9',
-        '1.8.9', '1.8.8', '1.8'
-    ];
-    return supported.includes(requested);
+// ✅ التحقق من أن الإصدار نصي صالح
+function isValidVersion(v) {
+    if (!v || typeof v !== 'string') return false;
+    if (v === 'auto' || v === '-1' || v === '777') return false;
+    return VALID_VERSIONS.includes(v);
 }
 
 function createBotInstance(email, username, host, port, version, serverType) {
     const botKey = email + '_' + username;
 
-    // ✅ إصلاح خيارات الاتصال
+    // 🎯 الخيارات الأساسية
     const botOptions = {
         host: host,
         port: parseInt(port) || 25565,
@@ -122,9 +124,13 @@ function createBotInstance(email, username, host, port, version, serverType) {
         hideErrors: false
     };
 
-    // ✅ فقط نمرر version إذا كان صالحاً وليس auto
-    if (getSupportedVersion(version)) {
+    // ✅ نمرر version فقط إذا كان نصياً صالحاً
+    // إذا كانت "auto" أو غير صالحة → لا نمررها، mineflayer سيكتشف تلقائياً
+    if (isValidVersion(version)) {
         botOptions.version = version;
+        console.log(`[🔧] (${username}) استخدام إصدار محدد: ${version}`);
+    } else {
+        console.log(`[🔧] (${username}) اكتشاف تلقائي للإصدار (auto)`);
     }
 
     let bot;
@@ -150,8 +156,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
     let isLoggedIn = false;
 
     bot.on('login', () => {
-        const detectedVersion = bot.version || 'unknown';
-        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر! إصدار: ${detectedVersion}`);
+        io.to(email).emit('log', `[✅] (${username}) دخل السيرفر!`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
     });
 
@@ -216,26 +221,16 @@ function createBotInstance(email, username, host, port, version, serverType) {
     };
 
     bot.on('message', (jsonMsg) => {
-        try {
-            handleServerMessage(jsonMsg.toString());
-        } catch (e) {}
+        try { handleServerMessage(jsonMsg.toString()); } catch (e) {}
     });
 
     bot.on('messagestr', (messagestr) => {
-        try {
-            handleServerMessage(messagestr);
-        } catch (e) {}
+        try { handleServerMessage(messagestr); } catch (e) {}
     });
 
     bot.on('error', (err) => {
         const errMsg = err && err.message ? err.message : String(err);
-        // ✅ تجاهل أخطاء البروتوكول لتجنب السبام
-        if (errMsg.includes('Unsupported protocol version') ||
-            errMsg.includes('minecraftVersion')) {
-            io.to(email).emit('log', `[⚠️] (${username}) مشكلة في الإصدار - تأكد من اختيار الإصدار الصحيح`);
-        } else {
-            io.to(email).emit('log', `[❌ خطأ - ${username}] ${errMsg}`);
-        }
+        io.to(email).emit('log', `[❌ خطأ - ${username}] ${errMsg}`);
     });
 
     bot.on('kicked', (reason) => {
@@ -272,6 +267,22 @@ function createBotInstance(email, username, host, port, version, serverType) {
     });
 
     return bot;
+}
+
+function getFormattedBotsData(email) {
+    if (!userBots[email]) return [];
+    return Object.keys(userBots[email]).map(name => {
+        const data = userBots[email][name];
+        const b = data ? data.instance : null;
+        return {
+            name: name,
+            status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
+            health: b && b.health ? Math.round(b.health) : 20,
+            food: b && b.food ? Math.round(b.food) : 20,
+            version: data.version || 'auto',
+            serverType: data.serverType || 'vanilla'
+        };
+    });
 }
 
 app.get('/', (req, res) => {
@@ -749,22 +760,6 @@ socket.on('code_response', (res) => {
 </html>`);
 });
 
-function getFormattedBotsData(email) {
-    if (!userBots[email]) return [];
-    return Object.keys(userBots[email]).map(name => {
-        const data = userBots[email][name];
-        const b = data ? data.instance : null;
-        return {
-            name: name,
-            status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
-            health: b && b.health ? Math.round(b.health) : 20,
-            food: b && b.food ? Math.round(b.food) : 20,
-            version: data.version || 'auto',
-            serverType: data.serverType || 'vanilla'
-        };
-    });
-}
-
 io.on('connection', (socket) => {
     socket.emit('update_global_bots', getTotalGlobalBots());
 
@@ -808,8 +803,10 @@ io.on('connection', (socket) => {
         }
         const username = data.name;
         if (userBots[email][username]) { socket.emit('log', `[تنبيه] البوت (${username}) يعمل بالفعل!`); return; }
+
         const userVersion = user.isPremium ? (data.version || 'auto') : 'auto';
         const userServerType = user.isPremium ? (data.serverType || 'vanilla') : 'vanilla';
+
         socket.emit('log', `[📦] تشغيل (${username}) - إصدار: ${userVersion} | نوع: ${userServerType}`);
         createBotInstance(email, username, data.ip, data.port, userVersion, userServerType);
         socket.emit('update_bots_data', getFormattedBotsData(email));
