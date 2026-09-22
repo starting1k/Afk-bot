@@ -1,18 +1,18 @@
 {
   "name": "starting-smp-bot",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Starting SMP Control Center Bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "node -e \"console.log('deps installed')\""
   },
   "dependencies": {
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
-    "minecraft-data": "latest",
-    "mineflayer": "latest",
-    "mineflayer-auto-eat": "^3.3.0",
-    "mineflayer-pathfinder": "^2.4.5",
+    "minecraft-data": "^3.74.0",
+    "minecraft-protocol": "^1.50.0",
+    "mineflayer": "^4.23.0",
     "socket.io": "^4.7.5"
   },
   "engines": {
