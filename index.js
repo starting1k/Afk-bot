@@ -3,15 +3,16 @@ const mineflayer = require('mineflayer');
 const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs-extra');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const DB_FILE = '/data/database.json';
-const SYSTEM_VERSION = '3.3.1';
+const DB_FILE = process.env.DB_PATH || '/data/database.json';
+const SYSTEM_VERSION = '3.3.2';
 
-// 🛡️ حماية السيرفر من الانهيار
+// 🛡️ حماية السيرفر من الانهيار مفاجئ
 process.on('uncaughtException', (err) => {
     let msg;
     try { msg = err && err.message ? err.message : String(err); } catch (e) { msg = 'unknown'; }
@@ -51,7 +52,7 @@ const promoCodes = {
     'STARTING_KING': { type: 'lifetime', days: 0, maxUses: 1, usedCount: 0, usedBy: [] }
 };
 
-// قائمة الإصدارات المدعومة (نصية فقط)
+// قائمة الإصدارات المدعومة
 const SUPPORTED_VERSIONS = [
     '1.21.4', '1.21.3', '1.21.1', '1.21',
     '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
@@ -63,7 +64,6 @@ const SUPPORTED_VERSIONS = [
     '1.14.4', '1.14.3', '1.14.2', '1.14.1', '1.14',
     '1.13.2', '1.13.1', '1.13',
     '1.12.2', '1.12.1', '1.12',
-    '1.11.2', '1.11.1', '1.11',
     '1.10.2', '1.10.1', '1.10',
     '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9',
     '1.8.9', '1.8.8', '1.8'
@@ -91,7 +91,7 @@ function loadDatabase() {
             const data = fs.readJsonSync(DB_FILE);
             if (data.usersDB) Object.assign(usersDB, data.usersDB);
             if (data.promoCodes) Object.assign(promoCodes, data.promoCodes);
-            console.log('✅ تم تحميل البيانات بنجاح');
+            console.log('✅ تم تحميل قاعدة البيانات بنجاح');
         } else {
             console.log('📝 بدء إنشاء قاعدة بيانات جديدة');
         }
@@ -102,7 +102,8 @@ function loadDatabase() {
 
 function saveDatabase() {
     try {
-        fs.ensureDirSync('/data');
+        const dir = path.dirname(DB_FILE);
+        fs.ensureDirSync(dir);
         fs.writeJsonSync(DB_FILE, { usersDB, promoCodes }, { spaces: 2 });
     } catch (e) {
         console.log('⚠️ خطأ عند حفظ قاعدة البيانات:', safeString(e.message, e));
@@ -204,7 +205,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
             hasTriedRegister = true;
             setTimeout(() => {
                 try {
-                    if (bot && bot.chat) {
+                    if (bot && bot.chat && !isLoggedIn) {
                         bot.chat(`/register ${DEFAULT_BOT_PASSWORD} ${DEFAULT_BOT_PASSWORD}`);
                         io.to(email).emit('log', `[🔐] (${username}) جاري التسجيل تلقائياً...`);
                     }
@@ -217,7 +218,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
             hasTriedLogin = true;
             setTimeout(() => {
                 try {
-                    if (bot && bot.chat) {
+                    if (bot && bot.chat && !isLoggedIn) {
                         bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
                         io.to(email).emit('log', `[🔐] (${username}) جاري تسجيل الدخول...`);
                     }
@@ -235,7 +236,7 @@ function createBotInstance(email, username, host, port, version, serverType) {
                 hasTriedLogin = true;
                 setTimeout(() => {
                     try {
-                        if (bot && bot.chat) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
+                        if (bot && bot.chat && !isLoggedIn) bot.chat(`/login ${DEFAULT_BOT_PASSWORD}`);
                     } catch (e) {}
                 }, 1500);
             }
