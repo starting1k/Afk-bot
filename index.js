@@ -9,6 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const DB_FILE = '/data/database.json';
+const BOT_PASSWORD = '222222';
 
 const usersDB = {
     'zyathamza3@gmail.com': { name: 'Hamza', password: 'Starting1k', isPremium: true, maxBots: 10, premiumUntil: null }
@@ -69,11 +70,115 @@ function createBotInstance(email, username, host, port) {
     userBots[email][username] = { instance: bot, host: host, port: port };
     io.emit('update_global_bots', getTotalGlobalBots());
 
+    // 🔐 نظام تسجيل/دخول تلقائي
+    let authHandled = false;
+
     bot.on('login', () => {
         io.emit('log', `[✅] البوت (${username}) دخل السيرفر!`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
+        authHandled = false;
     });
-    bot.on('spawn', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
+
+    bot.on('spawn', () => { 
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
+    });
+
+    // 🎯 مراقبة الشات للرد على طلبات التسجيل/الدخول
+    bot.on('message', (jsonMsg) => {
+        const text = jsonMsg.toString().toLowerCase();
+        
+        if (authHandled) return;
+
+        // كشف طلب التسجيل (3 ثواني)
+        if (text.includes('/register') || text.includes('register') || 
+            text.includes('سجل') || text.includes('تسجيل') ||
+            text.includes('كلمة السر') || text.includes('password')) {
+            
+            setTimeout(() => {
+                if (authHandled) return;
+                try {
+                    bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
+                    io.emit('log', `[🔐] (${username}) أرسل أمر التسجيل`);
+                    authHandled = true;
+                    setTimeout(() => { authHandled = false; }, 5000);
+                } catch (e) {}
+            }, 3000);
+            return;
+        }
+
+        // كشف طلب الدخول (2 ثانية)
+        if (text.includes('/login') || text.includes('login') || 
+            text.includes('دخول') || text.includes('سجل دخول') ||
+            text.includes('already registered')) {
+            
+            setTimeout(() => {
+                if (authHandled) return;
+                try {
+                    bot.chat(`/login ${BOT_PASSWORD}`);
+                    io.emit('log', `[🔑] (${username}) أرسل أمر الدخول`);
+                    authHandled = true;
+                    setTimeout(() => { authHandled = false; }, 5000);
+                } catch (e) {}
+            }, 2000);
+            return;
+        }
+
+        // كلمة سر خاطئة → إعادة تسجيل بعد 3 ثواني
+        if (text.includes('incorrect') || text.includes('wrong password') || 
+            text.includes('كلمة السر خطأ')) {
+            setTimeout(() => {
+                try {
+                    bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
+                } catch (e) {}
+            }, 3000);
+        }
+    });
+
+    // 🎯 مراقبة الـ Whisper
+    bot.on('whisper', (username_sender, message) => {
+        if (authHandled) return;
+        const msg = message.toLowerCase();
+        if (msg.includes('register') || msg.includes('تسجيل')) {
+            setTimeout(() => {
+                try {
+                    bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
+                    io.emit('log', `[🔐-خاص] (${username}) أرسل التسجيل`);
+                    authHandled = true;
+                    setTimeout(() => { authHandled = false; }, 5000);
+                } catch (e) {}
+            }, 3000);
+        } else if (msg.includes('login') || msg.includes('دخول')) {
+            setTimeout(() => {
+                try {
+                    bot.chat(`/login ${BOT_PASSWORD}`);
+                    io.emit('log', `[🔑-خاص] (${username}) أرسل الدخول`);
+                    authHandled = true;
+                    setTimeout(() => { authHandled = false; }, 5000);
+                } catch (e) {}
+            }, 2000);
+        }
+    });
+
+    // 🎯 محاولة أولية بعد السpawn
+    bot.once('spawn', () => {
+        // Login بعد ثانيتين
+        setTimeout(() => {
+            if (authHandled) return;
+            try {
+                bot.chat(`/login ${BOT_PASSWORD}`);
+                io.emit('log', `[🔑-تلقائي] (${username}) محاولة دخول بعد 2ث`);
+            } catch (e) {}
+        }, 2000);
+
+        // Register بعد 3 ثواني
+        setTimeout(() => {
+            try {
+                bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
+                io.emit('log', `[🔐-تلقائي] (${username}) محاولة تسجيل بعد 3ث`);
+            } catch (e) {}
+        }, 3000);
+    });
+
     bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
     bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
     bot.on('error', (err) => {
@@ -82,7 +187,7 @@ function createBotInstance(email, username, host, port) {
             io.emit('log', `[خطأ - ${username}] ${msg}`);
         }
     });
-    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد`));
+    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد: ${reason}`));
     bot.on('end', () => {
         io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
         if (userBots[email] && userBots[email][username]) {
@@ -606,7 +711,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🎮 أوامر الحركة
     socket.on('bot_move', (data) => {
         const { email, botName, action } = data;
         const botData = userBots[email] && userBots[email][botName];
@@ -699,4 +803,5 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log('🎁 Codes: STARTING_LIFE / STARTING_5DAYS / STARTING_KING');
+    console.log(`🔐 كلمة سر البوت: ${BOT_PASSWORD}`);
 });
