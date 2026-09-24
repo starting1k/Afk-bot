@@ -64,132 +64,125 @@ function isPremiumActive(user) {
 function createBotInstance(email, username, host, port) {
     const botKey = email + '_' + username;
     const bot = mineflayer.createBot({
-        host: host, port: parseInt(port), username: username,
-        checkTimeoutInterval: 60000, physicsEnabled: false, hideErrors: true
+        host: host,
+        port: parseInt(port),
+        username: username,
+        version: false,
+        checkTimeoutInterval: 60000,
+        hideErrors: true
     });
     userBots[email][username] = { instance: bot, host: host, port: port };
     io.emit('update_global_bots', getTotalGlobalBots());
 
-    // 🔐 نظام تسجيل/دخول تلقائي
     let authHandled = false;
+    let authSuccess = false;
 
     bot.on('login', () => {
-        io.emit('log', `[✅] البوت (${username}) دخل السيرفر!`);
+        io.emit('log', `[✅] (${username}) دخل السيرفر!`);
         io.to(email).emit('update_bots_data', getFormattedBotsData(email));
-        authHandled = false;
     });
 
-    bot.on('spawn', () => { 
-        io.to(email).emit('update_bots_data', getFormattedBotsData(email)); 
-    });
-
-    // 🎯 مراقبة الشات للرد على طلبات التسجيل/الدخول
-    bot.on('message', (jsonMsg) => {
-        const text = jsonMsg.toString().toLowerCase();
+    bot.on('spawn', () => {
+        io.emit('log', `[🌍] (${username}) ظهر في العالم!`);
+        io.to(email).emit('update_bots_data', getFormattedBotsData(email));
         
-        if (authHandled) return;
+        setTimeout(() => {
+            if (authHandled || authSuccess) return;
+            try {
+                bot.chat(`/login ${BOT_PASSWORD}`);
+                io.emit('log', `[🔑] (${username}) حاول الدخول...`);
+                authHandled = true;
+            } catch (e) {}
+        }, 2000);
+    });
 
-        // كشف طلب التسجيل (3 ثواني)
-        if (text.includes('/register') || text.includes('register') || 
-            text.includes('سجل') || text.includes('تسجيل') ||
-            text.includes('كلمة السر') || text.includes('password')) {
-            
+    bot.on('message', (jsonMsg) => {
+        const raw = jsonMsg.toString();
+        const text = raw.toLowerCase();
+
+        if (text.includes('successfully') || text.includes('logged in') || 
+            text.includes('تم تسجيل الدخول') || text.includes('مرحبا بك')) {
+            authSuccess = true;
+            io.emit('log', `[🎉] (${username}) سجل دخول بنجاح!`);
+            return;
+        }
+
+        if (text.includes('registered') || text.includes('تم التسجيل') || 
+            text.includes('successfully registered')) {
+            authSuccess = true;
+            io.emit('log', `[🎉] (${username}) تسجل بنجاح!`);
             setTimeout(() => {
-                if (authHandled) return;
+                try { bot.chat(`/login ${BOT_PASSWORD}`); } catch (e) {}
+            }, 1000);
+            return;
+        }
+
+        if (!authHandled && (text.includes('/register') || text.includes('register') || 
+            text.includes('سجل') || text.includes('تسجيل'))) {
+            authHandled = true;
+            setTimeout(() => {
                 try {
                     bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
-                    io.emit('log', `[🔐] (${username}) أرسل أمر التسجيل`);
-                    authHandled = true;
-                    setTimeout(() => { authHandled = false; }, 5000);
+                    io.emit('log', `[🔐] (${username}) أرسل التسجيل`);
                 } catch (e) {}
             }, 3000);
             return;
         }
 
-        // كشف طلب الدخول (2 ثانية)
-        if (text.includes('/login') || text.includes('login') || 
-            text.includes('دخول') || text.includes('سجل دخول') ||
-            text.includes('already registered')) {
-            
+        if (!authHandled && (text.includes('/login') || text.includes('login') || 
+            text.includes('دخول'))) {
+            authHandled = true;
             setTimeout(() => {
-                if (authHandled) return;
                 try {
                     bot.chat(`/login ${BOT_PASSWORD}`);
-                    io.emit('log', `[🔑] (${username}) أرسل أمر الدخول`);
-                    authHandled = true;
-                    setTimeout(() => { authHandled = false; }, 5000);
+                    io.emit('log', `[🔑] (${username}) أرسل الدخول`);
                 } catch (e) {}
             }, 2000);
             return;
         }
 
-        // كلمة سر خاطئة → إعادة تسجيل بعد 3 ثواني
         if (text.includes('incorrect') || text.includes('wrong password') || 
             text.includes('كلمة السر خطأ')) {
+            authHandled = false;
             setTimeout(() => {
                 try {
                     bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
+                    authHandled = true;
                 } catch (e) {}
             }, 3000);
         }
     });
 
-    // 🎯 مراقبة الـ Whisper
-    bot.on('whisper', (username_sender, message) => {
-        if (authHandled) return;
+    bot.on('whisper', (sender, message) => {
         const msg = message.toLowerCase();
+        if (authSuccess) return;
         if (msg.includes('register') || msg.includes('تسجيل')) {
             setTimeout(() => {
-                try {
-                    bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
-                    io.emit('log', `[🔐-خاص] (${username}) أرسل التسجيل`);
-                    authHandled = true;
-                    setTimeout(() => { authHandled = false; }, 5000);
-                } catch (e) {}
+                try { bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`); } catch (e) {}
             }, 3000);
         } else if (msg.includes('login') || msg.includes('دخول')) {
             setTimeout(() => {
-                try {
-                    bot.chat(`/login ${BOT_PASSWORD}`);
-                    io.emit('log', `[🔑-خاص] (${username}) أرسل الدخول`);
-                    authHandled = true;
-                    setTimeout(() => { authHandled = false; }, 5000);
-                } catch (e) {}
+                try { bot.chat(`/login ${BOT_PASSWORD}`); } catch (e) {}
             }, 2000);
         }
-    });
-
-    // 🎯 محاولة أولية بعد السpawn
-    bot.once('spawn', () => {
-        // Login بعد ثانيتين
-        setTimeout(() => {
-            if (authHandled) return;
-            try {
-                bot.chat(`/login ${BOT_PASSWORD}`);
-                io.emit('log', `[🔑-تلقائي] (${username}) محاولة دخول بعد 2ث`);
-            } catch (e) {}
-        }, 2000);
-
-        // Register بعد 3 ثواني
-        setTimeout(() => {
-            try {
-                bot.chat(`/register ${BOT_PASSWORD} ${BOT_PASSWORD}`);
-                io.emit('log', `[🔐-تلقائي] (${username}) محاولة تسجيل بعد 3ث`);
-            } catch (e) {}
-        }, 3000);
     });
 
     bot.on('health', () => { io.to(email).emit('update_bots_data', getFormattedBotsData(email)); });
     bot.on('chat', (u, msg) => io.emit('log', `[${username}] <${u}> ${msg}`));
+    
     bot.on('error', (err) => {
         const msg = err.message || '';
         if (!msg.includes('ECONNREFUSED') && !msg.includes('TIMEOUT')) {
             io.emit('log', `[خطأ - ${username}] ${msg}`);
         }
     });
-    bot.on('kicked', (reason) => io.emit('log', `[⚠️] (${username}) طُرد: ${reason}`));
-    bot.on('end', () => {
-        io.emit('log', `[🔄] (${username}) انقطع - إعادة الاتصال بعد 10 ثواني...`);
+    
+    bot.on('kicked', (reason) => {
+        io.emit('log', `[⚠️] (${username}) طُرد: ${JSON.stringify(reason)}`);
+    });
+    
+    bot.on('end', (reason) => {
+        io.emit('log', `[🔄] (${username}) انقطع (${reason}) - إعادة الاتصال بعد 10 ثواني...`);
         if (userBots[email] && userBots[email][username]) {
             delete userBots[email][username];
             io.to(email).emit('update_bots_data', getFormattedBotsData(email));
@@ -624,12 +617,19 @@ function getFormattedBotsData(email) {
     if (!userBots[email]) return [];
     return Object.keys(userBots[email]).map(name => {
         const b = userBots[email][name].instance;
-        return {
-            name: name,
-            status: b && b.entity ? 'متصل 🟢' : 'جاري الدخول ⏳',
-            health: b && b.health ? Math.round(b.health) : 20,
-            food: b && b.food ? Math.round(b.food) : 20
-        };
+        let status = 'جاري الدخول ⏳';
+        let health = 20, food = 20;
+        
+        if (b) {
+            if (b.entity && b.entity.position) {
+                status = 'متصل 🟢';
+                health = b.health ? Math.round(b.health) : 20;
+                food = b.food ? Math.round(b.food) : 20;
+            } else if (b._client && b._client.state === 'play') {
+                status = 'داخل السيرفر 🟡';
+            }
+        }
+        return { name, status, health, food };
     });
 }
 
