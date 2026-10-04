@@ -1,20 +1,15 @@
 {
-  "name": "starting-smp-bot",
-  "version": "3.3.0",
-  "description": "Starting SMP Control Center Bot",
+  "name": "starting1k",
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "fs-extra": "^11.2.0",
-    "minecraft-data": "^3.95.0",
-    "minecraft-protocol": "^1.54.0",
-    "mineflayer": "^4.26.0",
-    "socket.io": "^4.7.5"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3",
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.4.5"
   }
 }
