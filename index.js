@@ -255,7 +255,6 @@ app.post('/api/bots/add', requireAuth, (req, res) => {
     });
   }
 
-  // تحديد اسم البوت
   let botName;
   if (user.isPremium) {
     if (!username || !username.trim()) {
@@ -347,7 +346,7 @@ app.post('/api/bots/:id/chat', requireAuth, (req, res) => {
 });
 
 // ============================================
-//                Repeat Message (بريميوم فقط - كل 15 دقيقة)
+//                Repeat Message
 // ============================================
 app.post('/api/bots/:id/repeat', requireAuth, (req, res) => {
   const user = db.users[req.session.username];
@@ -420,7 +419,6 @@ function createBot(entry, ownerUsername) {
       setTimeout(() => { try { bot.chat(`/register ${entry.config.authPassword} ${entry.config.authPassword}`); } catch (e) {} }, 5000);
     }
 
-    // Anti-AFK
     if (entry._antiAfk) clearInterval(entry._antiAfk);
     const antiAfk = setInterval(() => {
       if (!entry.online || !bot.entity) return;
@@ -551,7 +549,6 @@ const HTML_PAGE = `<!DOCTYPE html>
 
   <h1 class="text-4xl font-bold text-center my-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Starting1k</h1>
 
-  <!-- ============== غير مسجل ============== -->
   <div x-show="!loggedIn" x-cloak>
     <div class="flex gap-3 mb-6">
       <button @click="tab='login'" class="flex-1 py-3 rounded-xl font-bold transition"
@@ -579,14 +576,13 @@ const HTML_PAGE = `<!DOCTYPE html>
       </div>
       <div class="relative">
         <input x-model="regConfirm" :type="showRegConfirm ? 'text' : 'password'" placeholder="تأكيد الباسورد" class="w-full p-3 pl-12 rounded-xl bg-gray-900/70 border border-purple-500/20 focus:border-purple-500 outline-none">
-        <span class="eye-btn" @click="showRegConfirm = !showRegConfirm" x-text="showRegConfirm ? '🙈' : '👁️️'"></span>
+        <span class="eye-btn" @click="showRegConfirm = !showRegConfirm" x-text="showRegConfirm ? '🙈' : '👁'"></span>
       </div>
       <button @click="doRegister()" class="w-full purple-btn py-3 rounded-xl font-bold">إنشاء حساب ودخول</button>
       <p class="text-red-400 text-sm text-center" x-text="error"></p>
     </div>
   </div>
 
-  <!-- ============== مسجل دخول ============== -->
   <div x-show="loggedIn" x-cloak>
 
     <div class="card rounded-2xl p-4 mb-4 flex justify-between items-center">
@@ -601,14 +597,12 @@ const HTML_PAGE = `<!DOCTYPE html>
       </button>
     </div>
 
-    <!-- زر لوحة الأدمن الخاصة بحمزة zyathamza3 -->
     <div x-show="me.username === 'zyathamza3'" class="mb-4" x-cloak>
       <button @click="openAdminModal()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20">
         🛠️ لوحة الأدمن (عرض جميع بوتات المستخدمين والإيبيات)
       </button>
     </div>
 
-    <!-- بانر أو زر البريميوم المتكرر (يختفي عند المشتركين بالبريميوم) -->
     <div x-show="!me.isPremium" class="card rounded-2xl p-4 mb-4 flex justify-between items-center border-yellow-500/30 hover:border-yellow-500/60 transition cursor-pointer" @click="showPremiumModal = true">
       <div class="flex items-center gap-3">
         <div class="text-3xl">🎁</div>
@@ -624,7 +618,6 @@ const HTML_PAGE = `<!DOCTYPE html>
       البوتات: <span x-text="me.botCount"></span> / <span x-text="me.limit"></span>
     </div>
 
-    <!-- إضافة بوت -->
     <div class="card rounded-2xl p-5 mb-4 space-y-3">
       <h3 class="font-bold text-purple-400 text-lg mb-2">➕ إضافة بوت</h3>
       <input x-model="newIp" placeholder="IP السيرفر" class="w-full p-3 rounded-xl bg-gray-900/70 border border-purple-500/20 outline-none">
@@ -653,14 +646,12 @@ const HTML_PAGE = `<!DOCTYPE html>
       <p class="text-red-400 text-sm text-center" x-text="botMsg"></p>
     </div>
 
-    <!-- قائمة البوتات -->
     <div class="space-y-3">
       <template x-for="b in botList" :key="b.id">
         <div class="card rounded-2xl p-4">
 
           <div class="flex justify-between items-center mb-3">
             <div class="flex items-center gap-3">
-              <!-- رأس سكن البوت (Skin Head) -->
               <img :src="'https://mc-heads.net/avatar/' + b.username + '/40'" class="w-10 h-10 rounded-xl bg-gray-900 border border-purple-500/30 shadow" alt="Skin">
               <div>
                 <div class="font-mono text-purple-400 text-sm" x-text="b.ip + ':' + b.port"></div>
@@ -669,7 +660,6 @@ const HTML_PAGE = `<!DOCTYPE html>
             </div>
             
             <div class="flex items-center gap-2">
-              <!-- زر / قائمة اختيار وضع اللعب بجانب الرأس وحالة الاتصال -->
               <select @change="changeGameMode(b, $event)" class="bg-gray-900/90 border border-purple-500/40 rounded-xl px-2.5 py-1.5 text-xs text-purple-300 outline-none cursor-pointer hover:border-purple-400 transition">
                 <option value="survival" :selected="b.gameMode === 'survival'">Survival</option>
                 <option value="creative" :selected="b.gameMode === 'creative'">Creative</option>
@@ -697,7 +687,6 @@ const HTML_PAGE = `<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- الكونسول -->
           <div class="mb-3">
             <div class="flex justify-between items-center mb-1">
               <span class="text-xs text-purple-300 font-bold">📟 كونسول البوت</span>
@@ -740,7 +729,6 @@ const HTML_PAGE = `<!DOCTYPE html>
   </div>
 </div>
 
-<!-- Modal أمر الـ OP التلقائي عند تغيير وضع اللعب -->
 <div x-show="showOpModal" x-cloak class="fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50" @click.self="showOpModal=false">
   <div class="premium-modal rounded-3xl p-6 max-w-md w-full relative text-center">
     <button @click="showOpModal=false" class="absolute top-4 left-4 text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
@@ -756,7 +744,6 @@ const HTML_PAGE = `<!DOCTYPE html>
   </div>
 </div>
 
-<!-- Modal لوحة الأدمن -->
 <div x-show="showAdminModal" x-cloak class="fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50" @click.self="showAdminModal=false">
   <div class="premium-modal rounded-3xl p-6 max-w-2xl w-full relative max-h-[85vh] overflow-y-auto">
     <button @click="showAdminModal=false" class="absolute top-4 left-4 text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
@@ -801,7 +788,6 @@ const HTML_PAGE = `<!DOCTYPE html>
   </div>
 </div>
 
-<!-- Modal عرض البريميوم -->
 <div x-show="showPremiumModal" x-cloak class="fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50" @click.self="showPremiumModal=false">
   <div class="premium-modal rounded-3xl p-6 max-w-md w-full relative">
 
@@ -906,7 +892,6 @@ function app() {
 
       this.refreshTimer = setInterval(() => this.loadBots(), 5000);
 
-      // يظهر بانر أو تذكير البريميوم كل 5 دقائق للمستخدمين العاديين غير البريميوم
       this.premiumTimer = setInterval(() => {
         if (this.loggedIn && !this.me.isPremium) {
           this.showPremiumModal = true;
@@ -942,7 +927,6 @@ function app() {
       });
       const d = await r.json();
       if (d.success) {
-        // تجهيز الأمر وفتحه للمستخدم بنسخ تلقائي
         this.opCommandText = `/op ${b.username}`;
         this.opCopiedMsg = '';
         this.showOpModal = true;
@@ -1086,9 +1070,6 @@ function app() {
 </body>
 </html>`;
 
-// ============================================
-//                تشغيل السيرفر
-// ============================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('Starting1k يعمل على المنفذ ' + PORT);
